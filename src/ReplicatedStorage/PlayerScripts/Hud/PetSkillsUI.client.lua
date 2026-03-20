@@ -1,7 +1,6 @@
 ------------------//SERVICES
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 
 ------------------//VARIABLES
@@ -13,30 +12,21 @@ local uiRoot = playerGui:WaitForChild("UI")
 local hud = uiRoot:WaitForChild("GameHUD")
 
 local petSkillsUI = hud:WaitForChild("PetSkills")
-local skillIcon = petSkillsUI:WaitForChild("Icon")
+local skillIcon = petSkillsUI:WaitForChild("IconImage")
 local skillBindText = petSkillsUI:WaitForChild("BindText")
 local skillName = petSkillsUI:WaitForChild("SkillName")
-local skillCooldownOverlay = petSkillsUI:WaitForChild("CooldownOverlay")
-local skillTimerText = petSkillsUI:WaitForChild("TimerText")
+local skillTimeText = petSkillsUI:WaitForChild("Time") 
 
-local currentTween = nil
 local timerConnection = nil
 
 ------------------//FUNCTIONS
 local function startCooldownAnim(duration)
-	if currentTween then currentTween:Cancel() end
-	if timerConnection then timerConnection:Disconnect() timerConnection = nil end
+	if timerConnection then 
+		timerConnection:Disconnect() 
+		timerConnection = nil 
+	end
 	
-	skillTimerText.Visible = true
-	skillCooldownOverlay.Visible = true
-	
-	skillCooldownOverlay.AnchorPoint = Vector2.new(0.5, 1)
-	skillCooldownOverlay.Position = UDim2.new(0.5, 0, 1, 0)
-	skillCooldownOverlay.Size = UDim2.new(1, 0, 1, 0) 
-	
-	local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
-	currentTween = TweenService:Create(skillCooldownOverlay, tweenInfo, { Size = UDim2.new(1, 0, 0, 0) })
-	currentTween:Play()
+	skillTimeText.Visible = true
 	
 	local endTime = os.clock() + duration
 	
@@ -44,10 +34,9 @@ local function startCooldownAnim(duration)
 		local remaining = endTime - os.clock()
 		
 		if remaining > 0 then
-			skillTimerText.Text = string.format("%.1f", remaining)
+			skillTimeText.Text = string.format("%.1f", remaining)
 		else
-			skillTimerText.Visible = false
-			skillCooldownOverlay.Visible = false
+			skillTimeText.Visible = false
 			if timerConnection then
 				timerConnection:Disconnect()
 				timerConnection = nil
@@ -79,9 +68,7 @@ local function updateUI()
 end
 
 ------------------//INIT
-skillCooldownOverlay.Visible = false
-skillTimerText.Visible = false
-skillCooldownOverlay.Size = UDim2.new(1, 0, 0, 0)
+skillTimeText.Visible = false
 
 player:GetAttributeChangedSignal("EquippedSkill"):Connect(updateUI)
 
