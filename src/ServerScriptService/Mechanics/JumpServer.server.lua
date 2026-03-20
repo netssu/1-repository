@@ -5,6 +5,7 @@ local ServerStorage: ServerStorage = game:GetService("ServerStorage")
 
 ------------------//MODULES
 local DataUtility = require(ReplicatedStorage.Modules.Utility.DataUtility)
+local MultiplierUtility = require(ReplicatedStorage.Modules.Utility.MultiplierUtility)
 local PogoData = require(ReplicatedStorage.Modules.Datas.PogoData)
 local WorldConfig = require(ReplicatedStorage.Modules.Datas.WorldConfig)
 
@@ -135,7 +136,7 @@ local function recalculate_player_stats(player: Player): ()
 	local basePower = pogoStats.Power or 0
 	local rebirthMult = 1 + (rebirths * SETTINGS.RebirthPowerScale)
 
-	local globalMult = player:GetAttribute("Multiplier") or 1.0
+	local globalMult = MultiplierUtility.get(player)
 	if type(globalMult) ~= "number" then
 		globalMult = 1.0
 	end
@@ -157,11 +158,7 @@ local function award_coins(player: Player, combo: number, isCritical: boolean, f
 
 	local rebirthMult = 1 + (rebirths * SETTINGS.RebirthPowerScale)
 
-	local mult = player:GetAttribute("Multiplier") or 1.0
-	if type(mult) ~= "number" then
-		mult = 1.0
-	end
-	mult = math.max(1.0, mult)
+	local mult = MultiplierUtility.get(player)
 
 	local critMultiplier = isCritical and 2 or 1
 	local floorMultiplier = floorMult or 1

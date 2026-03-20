@@ -85,6 +85,18 @@ local COMMANDS = {
 		DataUtility.server.set(player, "Rebirths", 0)
 		teleport_to_world(player, 1)
 		print("Conta resetada")
+	end,
+
+	["rain"] = function(player, args)
+		local weatherManager = _G.WeatherEventManager
+		if not weatherManager or not weatherManager.forceRainFor then
+			warn("WeatherEventManager não encontrado para :rain")
+			return
+		end
+
+		local duration = tonumber(args[1]) or 300
+		weatherManager.forceRainFor(duration)
+		print("Chuva forçada por", duration, "segundos por", player.Name)
 	end
 }
 
