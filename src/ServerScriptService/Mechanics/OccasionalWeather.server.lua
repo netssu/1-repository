@@ -123,7 +123,6 @@ end
 local function push_players(dt: number)
 	local _ = dt
 	for _, player in ipairs(Players:GetPlayers()) do
-		local userId = player.UserId
 		local character = player.Character
 		if character then
 			local hrp = character:FindFirstChild("HumanoidRootPart")
