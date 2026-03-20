@@ -1,4 +1,3 @@
-------------------//SERVICES
 local Players: Players = game:GetService("Players")
 local RunService: RunService = game:GetService("RunService")
 local UserInputService: UserInputService = game:GetService("UserInputService")
@@ -7,7 +6,6 @@ local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage"
 local Debris: Debris = game:GetService("Debris")
 local MarketplaceService: MarketplaceService = game:GetService("MarketplaceService")
 
-------------------//VARIABLES
 local DataUtility = require(ReplicatedStorage.Modules.Utility.DataUtility)
 local RockModule = require(ReplicatedStorage.Modules.Game:WaitForChild("RockModule"))
 local CameraShaker = require(ReplicatedStorage.Modules.Libraries.CameraShaker)
@@ -226,6 +224,7 @@ local is_sustained_hold: boolean = false
 
 local auto_jump_active: boolean = false
 local has_auto_jump_pass: boolean = false
+local owns_auto_jump_pass: boolean = false
 local gravityApplied: boolean = false
 
 local jumpAnimation: Animation? = nil
@@ -247,11 +246,11 @@ local jumpLock: boolean = false
 local block_zone_frames: number = 0
 local block_cooldown_end: number = 0
 
--- VARIÁVEIS DE SKILL
 local last_second_chance = 0
-local last_active_use = 0
 local temp_auto_jump_end = 0
 local super_jump_ready = false
+
+local skill_cooldowns_end = {}
 
 local state = {
 	is_grounded = true,
@@ -287,8 +286,6 @@ local PROBE_OFFSETS = {
 	Vector3.new(-0.707, 0, -0.707),
 }
 
-------------------//FUNCTIONS
-
 local function useActiveAbility()
 	local activeType = player:GetAttribute("EquippedSkill")
 	if not activeType or activeType == "" then return end
@@ -298,40 +295,47 @@ local function useActiveAbility()
 	
 	local activeCD = skillInfo.Cooldown or 10
 	local now = os.clock()
+	local cdEnd = skill_cooldowns_end[activeType] or 0
 	
-	if now - last_active_use < activeCD then
-		NotificationUtility:Warning("Habilidade recarregando!", 2)
+	if now < cdEnd then
+		NotificationUtility:Warning("Skill on cooldown!", 2)
 		return
 	end
 	
-	last_active_use = now
-	
-	-- Envia o timestamp de término do cooldown para a nova UI local
+	skill_cooldowns_end[activeType] = now + activeCD
 	player:SetAttribute("SkillCooldownEnd", now + activeCD)
 	
 	if activeType == "Dash" then
 		if state.is_grounded then return end
-		local dashForce = skillInfo.Value or 150
+		local dashForce = skillInfo.Value or 250
 		local moveDir = humanoid.MoveDirection
 		if moveDir.Magnitude < 0.1 then moveDir = rootPart.CFrame.LookVector end
 		
-		rootPart.AssemblyLinearVelocity = Vector3.new(moveDir.X * dashForce, rootPart.AssemblyLinearVelocity.Y, moveDir.Z * dashForce)
+		local currentY = rootPart.AssemblyLinearVelocity.Y
+		local dashY = math.max(currentY, 40)
+		
+		rootPart.AssemblyLinearVelocity = Vector3.new(moveDir.X * dashForce, dashY, moveDir.Z * dashForce)
 		PopupModule.Create(rootPart, "DASH!", Color3.fromRGB(100, 200, 255), { IsCritical = true, Direction = Vector3.new(0,3,0) })
 		
 	elseif activeType == "DoubleJump" then
 		if state.is_grounded then return end
-		local jumpVel = 120 / math.sqrt(CONFIG.gravity_mult)
+		local petJumpBoost = player:GetAttribute("PetJumpBoost") or 0
+		local finalPower = (CONFIG.base_jump_power + petJumpBoost) * CONFIG.POWER_SCALE * 1.5
+		local jumpVel = finalPower / math.sqrt(CONFIG.gravity_mult)
+		
+		if jumpVel < 150 then jumpVel = 150 end
+		
 		rootPart.AssemblyLinearVelocity = Vector3.new(rootPart.AssemblyLinearVelocity.X, jumpVel, rootPart.AssemblyLinearVelocity.Z)
-		PopupModule.Create(rootPart, "PULO DUPLO!", Color3.fromRGB(150, 150, 255), { IsCritical = true, Direction = Vector3.new(0,3,0) })
+		PopupModule.Create(rootPart, "DOUBLE JUMP!", Color3.fromRGB(150, 150, 255), { IsCritical = true, Direction = Vector3.new(0,3,0) })
 		
 	elseif activeType == "TempAutoJump" then
 		local duration = skillInfo.Value or 8
 		temp_auto_jump_end = now + duration
-		PopupModule.Create(rootPart, "FRENESI!", Color3.fromRGB(255, 50, 50), { IsCritical = true, Direction = Vector3.new(0,3,0) })
+		PopupModule.Create(rootPart, "FRENZY!", Color3.fromRGB(255, 50, 50), { IsCritical = true, Direction = Vector3.new(0,3,0) })
 		
 	elseif activeType == "SuperJump" then
 		super_jump_ready = true
-		PopupModule.Create(rootPart, "SUPER PULO PREPARADO!", Color3.fromRGB(255, 200, 50), { IsCritical = true, Direction = Vector3.new(0,3,0) })
+		PopupModule.Create(rootPart, "SUPER JUMP READY!", Color3.fromRGB(255, 200, 50), { IsCritical = true, Direction = Vector3.new(0,3,0) })
 	end
 end
 
@@ -949,7 +953,6 @@ local function perform_jump(isPerfectRebound: boolean, isChained: boolean): ()
 
 	play_jump_anim_forward()
 
-	-- APLICA O PASSIVE BOOST DO PET
 	local petJumpBoost = player:GetAttribute("PetJumpBoost") or 0
 	local scaledBasePower = (CONFIG.base_jump_power + petJumpBoost) * CONFIG.POWER_SCALE
 	local comboBonus = math.min(state.current_combo * CONFIG.combo_bonus_power, CONFIG.max_combo_power_cap)
@@ -970,13 +973,12 @@ local function perform_jump(isPerfectRebound: boolean, isChained: boolean): ()
 
 	finalPower = math.min(finalPower, scaledBasePower + CONFIG.max_combo_power_cap)
 
-	-- APLICA A ATIVA "SUPER PULO" SE PREPARADA
 	if super_jump_ready then
 		super_jump_ready = false
 		local skillInfo = SkillsData.GetSkillData("SuperJump")
 		local superMultiplier = (skillInfo and skillInfo.Value) or 2.5
 		finalPower *= superMultiplier
-		PopupModule.Create(rootPart, "SUPER PULO!", Color3.fromRGB(255, 100, 255), { IsCritical = true, Direction = Vector3.new(0, 3, 0) })
+		PopupModule.Create(rootPart, "SUPER JUMP!", Color3.fromRGB(255, 100, 255), { IsCritical = true, Direction = Vector3.new(0, 3, 0) })
 	end
 
 	local jumpVelocity = finalPower / math.sqrt(CONFIG.gravity_mult)
@@ -1135,12 +1137,11 @@ local function land(): ()
 		return
 	end
 
-	-- APLICA A SEGUNDA CHANCE (SALVA VIDAS)
 	local secondChanceCD = player:GetAttribute("SecondChanceCD") or 0
 	if secondChanceCD > 0 and (os.clock() - last_second_chance) >= secondChanceCD then
 		last_second_chance = os.clock()
 		player:SetAttribute("SkillCooldownEnd", os.clock() + secondChanceCD)
-		PopupModule.Create(rootPart, "SALVA VIDAS!", Color3.fromRGB(100, 255, 100), { IsCritical = true, Direction = Vector3.new(0, 2, 0) })
+		PopupModule.Create(rootPart, "LIFESAVER!", Color3.fromRGB(100, 255, 100), { IsCritical = true, Direction = Vector3.new(0, 2, 0) })
 		
 		perform_jump(true, true) 
 		trigger_landing_vfx(math.abs(last_falling_velocity), true)
@@ -1322,7 +1323,6 @@ local function bind_character(newCharacter: Model): ()
 	end)
 end
 
-------------------//MAIN FUNCTIONS
 local function check_grounded(dt: number): boolean
 	local rawDist = state.raw_ground_distance
 	local velY = rootPart.AssemblyLinearVelocity.Y
@@ -1347,10 +1347,14 @@ local function update_loop(dt: number): ()
 
 	local now = os.clock()
 
-	-- APLICA O EFEITO TEMPORÁRIO DO TEMPAUTOJUMP (SKILL)
 	if temp_auto_jump_end > now then
 		auto_jump_active = true
 		has_auto_jump_pass = true
+	else
+		if not owns_auto_jump_pass and has_auto_jump_pass then
+			auto_jump_active = false
+			has_auto_jump_pass = false
+		end
 	end
 
 	if activeJumpVelocity and now < jumpEnforceUntil then
@@ -1609,7 +1613,6 @@ local function update_loop(dt: number): ()
 	camera.FieldOfView = state.visual_fov
 end
 
-------------------//INIT
 task.wait(2)
 
 DataUtility.client.ensure_remotes()
@@ -1653,6 +1656,7 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(plr: Player, 
 	end
 
 	if passId == CONFIG.PASS_AUTO then
+		owns_auto_jump_pass = true
 		has_auto_jump_pass = true
 		if CONFIG.AUTOJUMP_CRITICAL then
 			auto_jump_active = true
@@ -1663,6 +1667,24 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(plr: Player, 
 	elseif passId == CONFIG.PASS_EASY then
 		CONFIG.perfect_zone_percent = 0.5
 	end
+end)
+
+player:GetAttributeChangedSignal("EquippedSkill"):Connect(function()
+	local activeType = player:GetAttribute("EquippedSkill")
+	if activeType and activeType ~= "" then
+		local cdEnd = skill_cooldowns_end[activeType] or 0
+		if cdEnd > os.clock() then
+			player:SetAttribute("SkillCooldownEnd", cdEnd)
+		else
+			player:SetAttribute("SkillCooldownEnd", 0)
+		end
+	else
+		player:SetAttribute("SkillCooldownEnd", 0)
+	end
+end)
+
+player:GetAttributeChangedSignal("TriggerActiveSkill"):Connect(function()
+	useActiveAbility()
 end)
 
 UserInputService.InputBegan:Connect(function(input: InputObject, gpe: boolean)
@@ -1701,7 +1723,7 @@ end
 
 if autoJumpButton then
 	autoJumpButton.MouseButton1Click:Connect(function()
-		if not has_auto_jump_pass then
+		if not owns_auto_jump_pass then
 			MarketplaceService:PromptGamePassPurchase(player, CONFIG.PASS_AUTO)
 			return
 		end
@@ -1721,6 +1743,7 @@ task.spawn(function()
 	end)
 
 	if success and owns then
+		owns_auto_jump_pass = true
 		has_auto_jump_pass = true
 		if CONFIG.AUTOJUMP_CRITICAL then
 			auto_jump_active = true

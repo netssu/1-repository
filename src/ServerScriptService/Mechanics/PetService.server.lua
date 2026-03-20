@@ -126,12 +126,14 @@ local function updateMultiplier(player)
 				if skillInfo then
 					if skillInfo.Type == "Passive" then
 						bestPassiveSkill = petData.Skill
-						if skillInfo.Name:match("Pulo") then
+						
+						-- CORREÇÃO: Utiliza o ID da Skill (petData.Skill) e não o Name, para funcionar independentemente do idioma
+						if petData.Skill:match("JumpBoost") then
 							totalJumpBoost += (skillInfo.Value or 0)
-						elseif skillInfo.Name:match("Minerador") or skillInfo.Name:match("Tesouro") then
+						elseif petData.Skill:match("CoinDrop") then
 							if not activeCoinDrops[player] then activeCoinDrops[player] = {} end
 							table.insert(activeCoinDrops[player], {Amount = skillInfo.Value, Cooldown = skillInfo.Cooldown, LastDrop = os.clock()})
-						elseif skillInfo.Name:match("Salva Vidas") then
+						elseif petData.Skill:match("SecondChance") then
 							player:SetAttribute("SecondChanceCD", skillInfo.Cooldown)
 						end
 					elseif skillInfo.Type == "Active" then

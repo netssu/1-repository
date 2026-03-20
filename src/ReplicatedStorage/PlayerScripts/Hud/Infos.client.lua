@@ -4,25 +4,30 @@ local RunService: RunService = game:GetService("RunService")
 local TweenService: TweenService = game:GetService("TweenService")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris: Debris = game:GetService("Debris")
-
-------------------//MODULES
-local NotificationUtility = require(ReplicatedStorage.Modules.Utility.NotificationUtility)
-local MathUtility = require(ReplicatedStorage.Modules.Utility.MathUtility)
-local DataUtility = require(ReplicatedStorage.Modules.Utility.DataUtility)
-local PogoData = require(ReplicatedStorage.Modules.Datas.PogoData)
-local PopupModule = require(ReplicatedStorage.Modules.Libraries.PopupModule)
+local UserInputService: UserInputService = game:GetService("UserInputService")
 
 ------------------//CONSTANTS
+local IS_MOBILE: boolean = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+local BASE_UI_SCALE: number = IS_MOBILE and 0.75 or 1
+local ANIM_UI_SCALE: number = IS_MOBILE and 0.9 or 1.15
+local FLY_COIN_SCALE_MAX: number = IS_MOBILE and 0.95 or 1.3
+
 local STUDS_TO_METERS: number = 0.28
 local COIN_ICON_ID: string = "rbxassetid://82346463581106"
 local COIN_FLY_COUNT: number = 5
-local COIN_FLY_SIZE: UDim2 = UDim2.new(0, 32, 0, 32)
+local COIN_FLY_SIZE: UDim2 = IS_MOBILE and UDim2.new(0, 24, 0, 24) or UDim2.new(0, 32, 0, 32)
 local COIN_SPAWN_SPREAD: number = 80
 local COIN_FLY_DURATION_MIN: number = 0.4
 local COIN_FLY_DURATION_MAX: number = 0.8
 local COIN_DELAY_STAGGER: number = 0.03
 
 ------------------//VARIABLES
+local NotificationUtility = require(ReplicatedStorage.Modules.Utility.NotificationUtility)
+local MathUtility = require(ReplicatedStorage.Modules.Utility.MathUtility)
+local DataUtility = require(ReplicatedStorage.Modules.Utility.DataUtility)
+local PogoData = require(ReplicatedStorage.Modules.Datas.PogoData)
+local PopupModule = require(ReplicatedStorage.Modules.Libraries.PopupModule)
+
 local player: Player = Players.LocalPlayer
 local playerGui: PlayerGui = player:WaitForChild("PlayerGui")
 
@@ -63,18 +68,18 @@ local notifiedPogos: {[string]: boolean} = {}
 ------------------//FUNCTIONS
 if not rebirthScale then
 	rebirthScale = Instance.new("UIScale")
-	rebirthScale.Scale = 1
+	rebirthScale.Scale = BASE_UI_SCALE
 	rebirthScale.Parent = rbFrame
 else
-	rebirthScale.Scale = 1
+	rebirthScale.Scale = BASE_UI_SCALE
 end
 
 if not moneyScale then
 	moneyScale = Instance.new("UIScale")
-	moneyScale.Scale = 1
+	moneyScale.Scale = BASE_UI_SCALE
 	moneyScale.Parent = coinsFrame
 else
-	moneyScale.Scale = 1
+	moneyScale.Scale = BASE_UI_SCALE
 end
 
 displayCoinsValue.Changed:Connect(function(val)
@@ -141,7 +146,7 @@ local function spawn_gain_label(amount: number): ()
 	txt.Name = "GainLabel"
 	txt.Text = "+" .. format_short(amount)
 	txt.Font = Enum.Font.FredokaOne
-	txt.TextSize = 28
+	txt.TextSize = IS_MOBILE and 20 or 28
 	txt.TextColor3 = Color3.fromRGB(150, 255, 150)
 	txt.BackgroundTransparency = 1
 	txt.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -204,11 +209,11 @@ local function spawn_flying_coins(): ()
 
 			coin.Parent = oldUiFolder
 
-			local popIn = TweenService:Create(coinScale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.3 })
+			local popIn = TweenService:Create(coinScale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = FLY_COIN_SCALE_MAX })
 			popIn:Play()
 			popIn.Completed:Wait()
 
-			TweenService:Create(coinScale, TweenInfo.new(0.05), { Scale = 1 }):Play()
+			TweenService:Create(coinScale, TweenInfo.new(0.05), { Scale = BASE_UI_SCALE }):Play()
 
 			local flyDuration = COIN_FLY_DURATION_MIN + math.random() * (COIN_FLY_DURATION_MAX - COIN_FLY_DURATION_MIN)
 			local targetUDim = UDim2.new(0, targetPos.X, 0, targetPos.Y)
@@ -237,9 +242,9 @@ end
 local function animate_element(scaleObj: UIScale, store: {[string]: Tween}): ()
 	if store["scale"] then store["scale"]:Cancel() end
 
-	scaleObj.Scale = 1.15
+	scaleObj.Scale = ANIM_UI_SCALE
 
-	local tScale = TweenService:Create(scaleObj, TweenInfo.new(0.25, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { Scale = 1 })
+	local tScale = TweenService:Create(scaleObj, TweenInfo.new(0.25, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { Scale = BASE_UI_SCALE })
 	store["scale"] = tScale
 	tScale:Play()
 end
@@ -287,13 +292,15 @@ local function update_money_visuals(newAmount: number): ()
 
 		local text = "+" .. format_short(diff)
 		local isLarge = diff >= 1000
+		local popFontSize = IS_MOBILE and (isLarge and 40 or 30) or (isLarge and 55 or 45)
+		
 		PopupModule.Create(rootPart, text, Color3.fromRGB(255, 204, 0), {
 			Duration = 1.2,
 			Direction = Vector3.new(-(math.random(1, 2)), math.random(-1, 1), 0),
 			StartOffset = Vector3.new(0, 0, 0),
 			Spread = 1,
 			IsCritical = isLarge,
-			FontSize = isLarge and 55 or 45,
+			FontSize = popFontSize,
 		})
 	end
 	currentCoins = newAmount

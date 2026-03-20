@@ -15,19 +15,19 @@ export type SkillData = {
 
 local SkillsConfig: {[string]: SkillData} = {
 	-- PASSIVAS
-	["JumpBoost_Weak"] = { Type = "Passive", Name = "Pulo Forte", Description = "Aumenta levemente a força do pulo.", Value = 15, Icon = "rbxassetid://82346463581106" },
-	["JumpBoost_Strong"] = { Type = "Passive", Name = "Pulo Titânico", Description = "Aumenta drasticamente a força do pulo.", Value = 45, Icon = "rbxassetid://82346463581106" },
+	["JumpBoost_Weak"] = { Type = "Passive", Name = "Strong Jump", Description = "Slightly increases jump power.", Value = 30, Icon = "rbxassetid://82346463581106" },
+	["JumpBoost_Strong"] = { Type = "Passive", Name = "Titanic Jump", Description = "Drastically increases jump power.", Value = 80, Icon = "rbxassetid://82346463581106" },
 	
-	["CoinDrop_Weak"] = { Type = "Passive", Name = "Miner", Description = "Gera 5 moedas a cada 15 segundos.", Value = 100, Cooldown = 15, Icon = "rbxassetid://82346463581106" },
-	["CoinDrop_Strong"] = { Type = "Passive", Name = "Tesouro", Description = "Gera 25 moedas a cada 10 segundos.", Value = 25, Cooldown = 10, Icon = "rbxassetid://82346463581106" },
+	["CoinDrop_Weak"] = { Type = "Passive", Name = "Miner", Description = "Generates 100 coins every 15 seconds.", Value = 100, Cooldown = 15, Icon = "rbxassetid://82346463581106" },
+	["CoinDrop_Strong"] = { Type = "Passive", Name = "Treasure", Description = "Generates 250 coins every 10 seconds.", Value = 250, Cooldown = 10, Icon = "rbxassetid://82346463581106" },
 	
-	["SecondChance"] = { Type = "Passive", Name = "Salva Vidas", Description = "Garante um auto-jump ao errar uma queda. Recarrega em 60s.", Cooldown = 60, Icon = "rbxassetid://82346463581106" },
+	["SecondChance"] = { Type = "Passive", Name = "Lifesaver", Description = "Grants an auto-jump when missing a landing. Recharges in 60s.", Cooldown = 60, Icon = "rbxassetid://82346463581106" },
 
 	-- ATIVAS
-	["Dash"] = { Type = "Active", Name = "Dash", Description = "Dá um impulso para frente enquanto está no ar.", Cooldown = 5, Value = 150, Icon = "rbxassetid://82346463581106" },
-	["DoubleJump"] = { Type = "Active", Name = "Pulo Duplo", Description = "Permite pular novamente enquanto estiver no ar.", Cooldown = 8, Icon = "rbxassetid://82346463581106" },
-	["SuperJump"] = { Type = "Active", Name = "Super Pulo", Description = "O seu próximo pulo será 2.5x mais forte.", Value = 2.5, Cooldown = 30, Icon = "rbxassetid://82346463581106" },
-	["TempAutoJump"] = { Type = "Active", Name = "Frenesi", Description = "Ativa o Auto-Jump de graça por 8 segundos.", Value = 8, Cooldown = 45, Icon = "rbxassetid://82346463581106" }
+	["Dash"] = { Type = "Active", Name = "Dash", Description = "Dashes forward while in the air.", Cooldown = 5, Value = 250, Icon = "rbxassetid://82346463581106" },
+	["DoubleJump"] = { Type = "Active", Name = "Double Jump", Description = "Allows you to jump again while in the air.", Cooldown = 8, Icon = "rbxassetid://82346463581106" },
+	["SuperJump"] = { Type = "Active", Name = "Super Jump", Description = "Your next jump will be 2.5x stronger.", Value = 2.5, Cooldown = 30, Icon = "rbxassetid://82346463581106" },
+	["TempAutoJump"] = { Type = "Active", Name = "Frenzy", Description = "Activates Auto-Jump for free for 8 seconds.", Value = 8, Cooldown = 45, Icon = "rbxassetid://82346463581106" }
 }
 
 local DataSkills = {}
