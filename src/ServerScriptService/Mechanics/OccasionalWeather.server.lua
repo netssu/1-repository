@@ -1,7 +1,6 @@
 ------------------//SERVICES
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 local MultiplierUtility = require(ReplicatedStorage.Modules.Utility.MultiplierUtility)
 local WeatherControl = require(script.Parent:WaitForChild("WeatherControl"))
 
@@ -20,8 +19,6 @@ local EVENT_DURATION_SECONDS = 5 * 60 -- primeiros 5 minutos de cada hora cheia
 local WEATHER_MULTIPLIER_ACTIVE = 2
 local WEATHER_MULTIPLIER_IDLE = 1
 
-local WIND_JUMP_IMPULSE = 38
-
 local CLOUDS_NAME = "GlobalWeatherClouds"
 
 ------------------//STATE
@@ -32,8 +29,6 @@ local activeState = {
 	startedAt = 0,
 	endsAt = 0,
 }
-
-local jumpImpulseConsumedByPlayer: {[number]: boolean} = {}
 
 ------------------//FUNCTIONS (Random determinístico)
 local function hash_int(value: number): number
@@ -119,50 +114,6 @@ local function apply_weather_multiplier_to_all_players(isActive: boolean)
 	end
 end
 
-------------------//FUNCTIONS (Gameplay)
-local function push_players(dt: number)
-	local _ = dt
-	for _, player in ipairs(Players:GetPlayers()) do
-		local character = player.Character
-		if character then
-			local hrp = character:FindFirstChild("HumanoidRootPart")
-			local humanoid = character:FindFirstChildOfClass("Humanoid")
-			if hrp and hrp:IsA("BasePart") and humanoid and humanoid.Health > 0 then
-				local currentState = humanoid:GetState()
-				local isGrounded = currentState == Enum.HumanoidStateType.Running
-					or currentState == Enum.HumanoidStateType.Landed
-					or currentState == Enum.HumanoidStateType.RunningNoPhysics
-
-				if isGrounded then
-					jumpImpulseConsumedByPlayer[userId] = false
-				end
-
-				local isAirborne = currentState == Enum.HumanoidStateType.Jumping
-					or currentState == Enum.HumanoidStateType.Freefall
-					or currentState == Enum.HumanoidStateType.FallingDown
-
-				if activeState.active and isAirborne and not jumpImpulseConsumedByPlayer[userId] then
-					local windHorizontal = Vector3.new(activeState.direction.X, 0, activeState.direction.Z)
-					if windHorizontal.Magnitude > 0.001 then
-						windHorizontal = windHorizontal.Unit
-					else
-						windHorizontal = Vector3.new(0, 0, -1)
-					end
-
-					local currentVelocity = hrp.AssemblyLinearVelocity
-					local horizontalVelocity = Vector3.new(currentVelocity.X, 0, currentVelocity.Z)
-					local boostedHorizontal = horizontalVelocity + (windHorizontal * WIND_JUMP_IMPULSE)
-
-					hrp.AssemblyLinearVelocity = Vector3.new(boostedHorizontal.X, currentVelocity.Y, boostedHorizontal.Z)
-					jumpImpulseConsumedByPlayer[userId] = true
-				end
-			end
-		else
-			jumpImpulseConsumedByPlayer[userId] = false
-		end
-	end
-end
-
 local function broadcast_state(targetPlayer: Player?)
 	if targetPlayer then
 		weatherRemote:FireClient(targetPlayer, activeState)
@@ -201,11 +152,12 @@ Players.PlayerAdded:Connect(function(player)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
-	jumpImpulseConsumedByPlayer[player.UserId] = nil
 	MultiplierUtility.clear(player)
 end)
 
-RunService.Heartbeat:Connect(function(dt)
-	sync_weather_state(false)
-	push_players(dt)
+task.spawn(function()
+	while true do
+		task.wait(1)
+		sync_weather_state(false)
+	end
 end)
