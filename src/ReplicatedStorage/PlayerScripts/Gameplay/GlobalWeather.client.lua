@@ -17,6 +17,7 @@ local WIND_MAX_HORIZONTAL_SPEED = 85
 local RAIN_EFFECT_OFFSET = CFrame.new(0, 10, 0)
 local RAIN_EFFECT_NAME = "GlobalWeatherRain"
 local WIND_POINTER_PART_NAME = "WindPointerPart"
+local WIND_POINTER_DECAL_TEXTURE = "rbxassetid://138007024966757"
 
 ------------------//STATE
 local activeAtmosphereTween: Tween? = nil
@@ -38,33 +39,21 @@ local lightingDefaults = {
 ------------------//UI
 local localPlayer = Players.LocalPlayer
 
-local function ensure_pointer_arrow(pointerPart: BasePart)
-	local arrowSurface = pointerPart:FindFirstChild("ArrowSurface")
-	if not (arrowSurface and arrowSurface:IsA("SurfaceGui")) then
-		arrowSurface = Instance.new("SurfaceGui")
-		arrowSurface.Name = "ArrowSurface"
-		arrowSurface.Face = Enum.NormalId.Front
-		arrowSurface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-		arrowSurface.PixelsPerStud = 40
-		arrowSurface.AlwaysOnTop = true
-		arrowSurface.Parent = pointerPart
+local function ensure_pointer_decal(pointerPart: BasePart)
+	local decal = pointerPart:FindFirstChild("ArrowDecal")
+	if decal and decal:IsA("Decal") then
+		decal.Texture = WIND_POINTER_DECAL_TEXTURE
+		decal.Face = Enum.NormalId.Top
+		decal.Transparency = pointerPart.Transparency
+		return
 	end
 
-	local arrowLabel = arrowSurface:FindFirstChild("Arrow")
-	if not (arrowLabel and arrowLabel:IsA("TextLabel")) then
-		arrowLabel = Instance.new("TextLabel")
-		arrowLabel.Name = "Arrow"
-		arrowLabel.Size = UDim2.fromScale(1, 1)
-		arrowLabel.BackgroundTransparency = 1
-		arrowLabel.Font = Enum.Font.GothamBlack
-		arrowLabel.TextScaled = true
-		arrowLabel.TextColor3 = Color3.fromRGB(220, 240, 255)
-		arrowLabel.TextStrokeTransparency = 0.35
-		arrowLabel.Parent = arrowSurface
-	end
-
-	arrowLabel.Text = "➡️"
-	arrowLabel.TextTransparency = pointerPart.Transparency
+	local newDecal = Instance.new("Decal")
+	newDecal.Name = "ArrowDecal"
+	newDecal.Texture = WIND_POINTER_DECAL_TEXTURE
+	newDecal.Face = Enum.NormalId.Top
+	newDecal.Transparency = pointerPart.Transparency
+	newDecal.Parent = pointerPart
 end
 
 local function get_or_create_wind_pointer(): BasePart?
@@ -85,18 +74,18 @@ local function get_or_create_wind_pointer(): BasePart?
 
 	local pointerPart = Instance.new("Part")
 	pointerPart.Name = WIND_POINTER_PART_NAME
-	pointerPart.Size = Vector3.new(0.35, 0.35, 3.5)
-	pointerPart.Material = Enum.Material.Neon
-	pointerPart.Color = Color3.fromRGB(167, 214, 255)
-	pointerPart.Transparency = 0.8
+	pointerPart.Size = Vector3.new(2.2, 0.2, 2.2)
+	pointerPart.Material = Enum.Material.SmoothPlastic
+	pointerPart.Color = Color3.fromRGB(255, 255, 255)
+	pointerPart.Transparency = 0
 	pointerPart.CanCollide = false
 	pointerPart.CanQuery = false
 	pointerPart.CanTouch = false
 	pointerPart.Massless = true
 	pointerPart.Anchored = true
-	pointerPart.CFrame = rootPart.CFrame * CFrame.new(0, 1, 0)
+	pointerPart.CFrame = rootPart.CFrame * CFrame.new(0, -2.75, 0)
 	pointerPart.Parent = character
-	ensure_pointer_arrow(pointerPart)
+	ensure_pointer_decal(pointerPart)
 
 	return pointerPart
 end
@@ -108,8 +97,8 @@ local function update_wind_pointer_transform()
 	end
 
 	local active = currentWeatherState.active == true
-	pointerPart.Transparency = active and 0.8 or 1
-	ensure_pointer_arrow(pointerPart)
+	pointerPart.Transparency = active and 0 or 1
+	ensure_pointer_decal(pointerPart)
 	if not active then
 		return
 	end
@@ -129,7 +118,7 @@ local function update_wind_pointer_transform()
 	local character = localPlayer.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
 	if rootPart and rootPart:IsA("BasePart") then
-		local partPosition = rootPart.Position + Vector3.new(0, 1, 0) + (horizontal * 2)
+		local partPosition = rootPart.Position + Vector3.new(0, -2.75, 0)
 		pointerPart.CFrame = CFrame.lookAt(partPosition, partPosition + horizontal, Vector3.yAxis)
 	end
 end
