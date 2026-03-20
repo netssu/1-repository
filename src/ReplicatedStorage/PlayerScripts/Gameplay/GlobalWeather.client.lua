@@ -12,16 +12,14 @@ local weatherRemote = remotesFolder:WaitForChild("GlobalWeatherEvent")
 
 local WEATHER_ATMOSPHERE_NAME = "GlobalWeatherAtmosphere"
 local LIGHTING_TWEEN = TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local INDICATOR_TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local WIND_AIR_ACCELERATION = 200 -- studs/s² horizontais no ar
 local WIND_MAX_HORIZONTAL_SPEED = 85
 local RAIN_EFFECT_OFFSET = CFrame.new(0, 10, 0)
 local RAIN_EFFECT_NAME = "GlobalWeatherRain"
-local WIND_ARROW_GUI_NAME = "WindArrowBillboard"
+local WIND_POINTER_PART_NAME = "WindPointerPart"
 
 ------------------//STATE
 local activeAtmosphereTween: Tween? = nil
-local indicatorTween: Tween? = nil
 local activeLightingTweens: {Tween} = {}
 local currentWeatherState: {[string]: any} = {
 	active = false,
@@ -40,7 +38,36 @@ local lightingDefaults = {
 ------------------//UI
 local localPlayer = Players.LocalPlayer
 
-local function get_or_create_wind_indicator(): TextLabel?
+local function ensure_pointer_arrow(pointerPart: BasePart)
+	local arrowSurface = pointerPart:FindFirstChild("ArrowSurface")
+	if not (arrowSurface and arrowSurface:IsA("SurfaceGui")) then
+		arrowSurface = Instance.new("SurfaceGui")
+		arrowSurface.Name = "ArrowSurface"
+		arrowSurface.Face = Enum.NormalId.Front
+		arrowSurface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		arrowSurface.PixelsPerStud = 40
+		arrowSurface.AlwaysOnTop = true
+		arrowSurface.Parent = pointerPart
+	end
+
+	local arrowLabel = arrowSurface:FindFirstChild("Arrow")
+	if not (arrowLabel and arrowLabel:IsA("TextLabel")) then
+		arrowLabel = Instance.new("TextLabel")
+		arrowLabel.Name = "Arrow"
+		arrowLabel.Size = UDim2.fromScale(1, 1)
+		arrowLabel.BackgroundTransparency = 1
+		arrowLabel.Font = Enum.Font.GothamBlack
+		arrowLabel.TextScaled = true
+		arrowLabel.TextColor3 = Color3.fromRGB(220, 240, 255)
+		arrowLabel.TextStrokeTransparency = 0.35
+		arrowLabel.Parent = arrowSurface
+	end
+
+	arrowLabel.Text = "➡️"
+	arrowLabel.TextTransparency = pointerPart.Transparency
+end
+
+local function get_or_create_wind_pointer(): BasePart?
 	local character = localPlayer.Character
 	if not character then
 		return nil
@@ -51,34 +78,60 @@ local function get_or_create_wind_indicator(): TextLabel?
 		return nil
 	end
 
-	local existingGui = rootPart:FindFirstChild(WIND_ARROW_GUI_NAME)
-	if existingGui and existingGui:IsA("BillboardGui") then
-		local existingArrow = existingGui:FindFirstChild("Arrow")
-		if existingArrow and existingArrow:IsA("TextLabel") then
-			return existingArrow
-		end
+	local existingPart = character:FindFirstChild(WIND_POINTER_PART_NAME)
+	if existingPart and existingPart:IsA("BasePart") then
+		return existingPart
 	end
 
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = WIND_ARROW_GUI_NAME
-	billboard.Adornee = rootPart
-	billboard.Size = UDim2.fromOffset(54, 54)
-	billboard.StudsOffset = Vector3.new(0, 4.5, 0)
-	billboard.AlwaysOnTop = true
-	billboard.Parent = rootPart
+	local pointerPart = Instance.new("Part")
+	pointerPart.Name = WIND_POINTER_PART_NAME
+	pointerPart.Size = Vector3.new(0.35, 0.35, 3.5)
+	pointerPart.Material = Enum.Material.Neon
+	pointerPart.Color = Color3.fromRGB(167, 214, 255)
+	pointerPart.Transparency = 0.8
+	pointerPart.CanCollide = false
+	pointerPart.CanQuery = false
+	pointerPart.CanTouch = false
+	pointerPart.Massless = true
+	pointerPart.Anchored = true
+	pointerPart.CFrame = rootPart.CFrame * CFrame.new(0, 1, 0)
+	pointerPart.Parent = character
+	ensure_pointer_arrow(pointerPart)
 
-	local arrow = Instance.new("TextLabel")
-	arrow.Name = "Arrow"
-	arrow.Size = UDim2.fromScale(1, 1)
-	arrow.BackgroundTransparency = 1
-	arrow.Font = Enum.Font.GothamBlack
-	arrow.TextScaled = true
-	arrow.TextColor3 = Color3.fromRGB(220, 240, 255)
-	arrow.TextStrokeTransparency = 0.35
-	arrow.Text = "➡️"
-	arrow.Parent = billboard
+	return pointerPart
+end
 
-	return arrow
+local function update_wind_pointer_transform()
+	local pointerPart = get_or_create_wind_pointer()
+	if not pointerPart then
+		return
+	end
+
+	local active = currentWeatherState.active == true
+	pointerPart.Transparency = active and 0.8 or 1
+	ensure_pointer_arrow(pointerPart)
+	if not active then
+		return
+	end
+
+	local direction = currentWeatherState.direction
+	if typeof(direction) ~= "Vector3" then
+		direction = Vector3.new(0, 0, -1)
+	end
+
+	local horizontal = Vector3.new(direction.X, 0, direction.Z)
+	if horizontal.Magnitude < 0.001 then
+		horizontal = Vector3.new(0, 0, -1)
+	else
+		horizontal = horizontal.Unit
+	end
+
+	local character = localPlayer.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+	if rootPart and rootPart:IsA("BasePart") then
+		local partPosition = rootPart.Position + Vector3.new(0, 1, 0) + (horizontal * 2)
+		pointerPart.CFrame = CFrame.lookAt(partPosition, partPosition + horizontal, Vector3.yAxis)
+	end
 end
 
 ------------------//FUNCTIONS
@@ -156,6 +209,20 @@ local function apply_cloudy_state(isActive: boolean)
 		table.insert(activeLightingTweens, restoreLightingTween)
 		restoreLightingTween:Play()
 	end
+end
+
+local function enforce_weather_lighting()
+	if currentWeatherState.active ~= true then
+		return
+	end
+
+	Lighting.Brightness = 1.1
+	Lighting.ClockTime = 16.2
+	Lighting.OutdoorAmbient = Color3.fromRGB(46, 54, 66)
+	Lighting.Ambient = Color3.fromRGB(40, 45, 55)
+	Lighting.EnvironmentDiffuseScale = 0.22
+	Lighting.EnvironmentSpecularScale = 0.08
+	Lighting.ExposureCompensation = -0.45
 end
 
 local function get_or_create_rain_effect(character: Model): BasePart?
@@ -237,43 +304,24 @@ local function update_rain_follow_camera()
 		return
 	end
 
-	rainPart.CFrame = camera.CFrame * RAIN_EFFECT_OFFSET
-end
-
-local function direction_to_arrow(direction: Vector3): string
-	if direction.Magnitude < 0.001 then
-		return "↑"
-	end
-
-	local angle = math.atan2(direction.X, -direction.Z)
-	local octant = math.floor(((angle / (2 * math.pi)) * 8) + 0.5) % 8
-	local arrows = {"↑", "↗", "→", "↘", "↓", "↙", "←", "↖"}
-	return arrows[octant + 1]
-end
-
-local function apply_wind_indicator(state: {[string]: any})
-	local indicator = get_or_create_wind_indicator()
-	if not indicator then
-		return
-	end
-	local active = state.active == true
-	local direction = state.direction
-
+	local direction = currentWeatherState.direction
 	if typeof(direction) ~= "Vector3" then
 		direction = Vector3.new(0, 0, -1)
 	end
 
-	indicator.Text = direction_to_arrow(direction)
-
-	if indicatorTween then
-		indicatorTween:Cancel()
-		indicatorTween = nil
+	local horizontalWind = Vector3.new(direction.X, 0, direction.Z)
+	if horizontalWind.Magnitude < 0.001 then
+		horizontalWind = Vector3.new(0, 0, -1)
+	else
+		horizontalWind = horizontalWind.Unit
 	end
 
-	indicatorTween = TweenService:Create(indicator, INDICATOR_TWEEN, {
-		TextTransparency = active and 0 or 1,
-	})
-	indicatorTween:Play()
+	local rainPosition = (camera.CFrame * RAIN_EFFECT_OFFSET).Position
+	rainPart.CFrame = CFrame.lookAt(rainPosition, rainPosition + horizontalWind, Vector3.yAxis)
+end
+
+local function apply_wind_indicator()
+	update_wind_pointer_transform()
 end
 
 local function apply_air_wind(dt: number)
@@ -330,18 +378,22 @@ weatherRemote.OnClientEvent:Connect(function(state)
 
 	currentWeatherState = state
 	apply_cloudy_state(state.active)
-	apply_wind_indicator(state)
+	apply_wind_indicator()
 	set_rain_active(state.active)
 end)
 
 RunService.RenderStepped:Connect(apply_air_wind)
 RunService.RenderStepped:Connect(update_rain_follow_camera)
+RunService.RenderStepped:Connect(update_wind_pointer_transform)
+RunService.RenderStepped:Connect(enforce_weather_lighting)
 
 localPlayer.CharacterAdded:Connect(function()
 	task.wait(0.2)
 	if currentWeatherState.active == true then
+		apply_cloudy_state(true)
 		set_rain_active(true)
+		apply_wind_indicator()
+	else
+		apply_cloudy_state(false)
 	end
 end)
-
-RunService.RenderStepped:Connect(apply_air_wind)
