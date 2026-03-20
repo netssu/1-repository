@@ -16,8 +16,7 @@ local WIND_AIR_ACCELERATION = 200 -- studs/s² horizontais no ar
 local WIND_MAX_HORIZONTAL_SPEED = 85
 local RAIN_EFFECT_OFFSET = CFrame.new(0, 10, 0)
 local RAIN_EFFECT_NAME = "GlobalWeatherRain"
-local WIND_POINTER_PART_NAME = "WindPointerPart"
-local WIND_POINTER_DECAL_TEXTURE = "rbxassetid://138007024966757"
+local WEATHER_NOTICE_GUI_NAME = "WeatherStartNoticeGui"
 
 ------------------//STATE
 local activeAtmosphereTween: Tween? = nil
@@ -26,6 +25,7 @@ local currentWeatherState: {[string]: any} = {
 	active = false,
 	direction = Vector3.new(0, 0, -1),
 }
+local lastWeatherActive = false
 local lightingDefaults = {
 	Brightness = Lighting.Brightness,
 	ClockTime = Lighting.ClockTime,
@@ -39,88 +39,110 @@ local lightingDefaults = {
 ------------------//UI
 local localPlayer = Players.LocalPlayer
 
-local function ensure_pointer_decal(pointerPart: BasePart)
-	local decal = pointerPart:FindFirstChild("ArrowDecal")
-	if decal and decal:IsA("Decal") then
-		decal.Texture = WIND_POINTER_DECAL_TEXTURE
-		decal.Face = Enum.NormalId.Top
-		decal.Transparency = pointerPart.Transparency
-		return
-	end
-
-	local newDecal = Instance.new("Decal")
-	newDecal.Name = "ArrowDecal"
-	newDecal.Texture = WIND_POINTER_DECAL_TEXTURE
-	newDecal.Face = Enum.NormalId.Top
-	newDecal.Transparency = pointerPart.Transparency
-	newDecal.Parent = pointerPart
-end
-
-local function get_or_create_wind_pointer(): BasePart?
-	local character = localPlayer.Character
-	if not character then
-		return nil, nil
-	end
-
-	local rootPart = character:FindFirstChild("HumanoidRootPart")
-	if not rootPart or not rootPart:IsA("BasePart") then
-		return nil, nil
-	end
-
-	local existingPart = character:FindFirstChild(WIND_POINTER_PART_NAME)
-	if existingPart and existingPart:IsA("BasePart") then
-		return existingPart
-	end
-
-	local pointerPart = Instance.new("Part")
-	pointerPart.Name = WIND_POINTER_PART_NAME
-	pointerPart.Size = Vector3.new(2.2, 0.2, 2.2)
-	pointerPart.Material = Enum.Material.SmoothPlastic
-	pointerPart.Color = Color3.fromRGB(255, 255, 255)
-	pointerPart.Transparency = 0
-	pointerPart.CanCollide = false
-	pointerPart.CanQuery = false
-	pointerPart.CanTouch = false
-	pointerPart.Massless = true
-	pointerPart.Anchored = true
-	pointerPart.CFrame = rootPart.CFrame * CFrame.new(0, -2.75, 0)
-	pointerPart.Parent = character
-	ensure_pointer_decal(pointerPart)
-
-	return pointerPart
-end
-
-local function update_wind_pointer_transform()
-	local pointerPart = get_or_create_wind_pointer()
-	if not pointerPart then
-		return
-	end
-
-	local active = currentWeatherState.active == true
-	pointerPart.Transparency = active and 0 or 1
-	ensure_pointer_decal(pointerPart)
-	if not active then
-		return
-	end
-
-	local direction = currentWeatherState.direction
-	if typeof(direction) ~= "Vector3" then
-		direction = Vector3.new(0, 0, -1)
-	end
-
+local function direction_to_side(direction: Vector3): string
 	local horizontal = Vector3.new(direction.X, 0, direction.Z)
 	if horizontal.Magnitude < 0.001 then
-		horizontal = Vector3.new(0, 0, -1)
-	else
-		horizontal = horizontal.Unit
+		return "X+"
+	end
+	horizontal = horizontal.Unit
+	if math.abs(horizontal.X) >= math.abs(horizontal.Z) then
+		return horizontal.X >= 0 and "X+" or "X-"
+	end
+	return horizontal.Z >= 0 and "Z+" or "Z-"
+end
+
+local function get_or_create_weather_notice_gui(): ScreenGui?
+	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+	if not playerGui then
+		return nil
 	end
 
-	local character = localPlayer.Character
-	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-	if rootPart and rootPart:IsA("BasePart") then
-		local partPosition = rootPart.Position + Vector3.new(0, -2.75, 0)
-		pointerPart.CFrame = CFrame.lookAt(partPosition, partPosition + horizontal, Vector3.yAxis)
+	local existingGui = playerGui:FindFirstChild(WEATHER_NOTICE_GUI_NAME)
+	if existingGui and existingGui:IsA("ScreenGui") then
+		return existingGui
 	end
+
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = WEATHER_NOTICE_GUI_NAME
+	screenGui.ResetOnSpawn = false
+	screenGui.IgnoreGuiInset = true
+	screenGui.Enabled = false
+	screenGui.Parent = playerGui
+
+	local dim = Instance.new("Frame")
+	dim.Name = "Dim"
+	dim.Size = UDim2.fromScale(1, 1)
+	dim.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	dim.BackgroundTransparency = 0.35
+	dim.Parent = screenGui
+
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.AnchorPoint = Vector2.new(0.5, 0.5)
+	panel.Position = UDim2.fromScale(0.5, 0.5)
+	panel.Size = UDim2.fromOffset(560, 220)
+	panel.BackgroundColor3 = Color3.fromRGB(26, 30, 42)
+	panel.Parent = dim
+
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.Size = UDim2.new(1, -30, 0, 44)
+	title.Position = UDim2.fromOffset(15, 12)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBold
+	title.TextScaled = true
+	title.TextColor3 = Color3.fromRGB(225, 238, 255)
+	title.Text = "Começou a chover!"
+	title.Parent = panel
+
+	local message = Instance.new("TextLabel")
+	message.Name = "Message"
+	message.Size = UDim2.new(1, -30, 0, 92)
+	message.Position = UDim2.fromOffset(15, 62)
+	message.BackgroundTransparency = 1
+	message.Font = Enum.Font.Gotham
+	message.TextWrapped = true
+	message.TextScaled = true
+	message.TextColor3 = Color3.fromRGB(210, 224, 246)
+	message.Text = ""
+	message.Parent = panel
+
+	local confirm = Instance.new("TextButton")
+	confirm.Name = "ConfirmButton"
+	confirm.AnchorPoint = Vector2.new(0.5, 1)
+	confirm.Position = UDim2.new(0.5, 0, 1, -16)
+	confirm.Size = UDim2.fromOffset(220, 44)
+	confirm.BackgroundColor3 = Color3.fromRGB(58, 126, 222)
+	confirm.Font = Enum.Font.GothamBold
+	confirm.TextScaled = true
+	confirm.TextColor3 = Color3.fromRGB(255, 255, 255)
+	confirm.Text = "Entendi"
+	confirm.Parent = panel
+
+	confirm.MouseButton1Click:Connect(function()
+		screenGui.Enabled = false
+	end)
+
+	return screenGui
+end
+
+local function show_weather_start_notice(direction: Vector3)
+	local noticeGui = get_or_create_weather_notice_gui()
+	if not noticeGui then
+		return
+	end
+
+	local side = direction_to_side(direction)
+	local dim = noticeGui:FindFirstChild("Dim")
+	local panel = dim and dim:FindFirstChild("Panel")
+	local messageLabel = panel and panel:FindFirstChild("Message")
+	if messageLabel and messageLabel:IsA("TextLabel") then
+		messageLabel.Text = "Começou a chover! O vento está empurrando você para o lado "
+			.. side
+			.. ". Confirme que entendeu para continuar."
+	end
+
+	noticeGui.Enabled = true
 end
 
 ------------------//FUNCTIONS
@@ -309,10 +331,6 @@ local function update_rain_follow_camera()
 	rainPart.CFrame = CFrame.lookAt(rainPosition, rainPosition + horizontalWind, Vector3.yAxis)
 end
 
-local function apply_wind_indicator()
-	update_wind_pointer_transform()
-end
-
 local function apply_air_wind(dt: number)
 	if currentWeatherState.active ~= true then
 		return
@@ -367,13 +385,15 @@ weatherRemote.OnClientEvent:Connect(function(state)
 
 	currentWeatherState = state
 	apply_cloudy_state(state.active)
-	apply_wind_indicator()
 	set_rain_active(state.active)
+	if state.active and not lastWeatherActive then
+		show_weather_start_notice(state.direction)
+	end
+	lastWeatherActive = state.active
 end)
 
 RunService.RenderStepped:Connect(apply_air_wind)
 RunService.RenderStepped:Connect(update_rain_follow_camera)
-RunService.RenderStepped:Connect(update_wind_pointer_transform)
 RunService.RenderStepped:Connect(enforce_weather_lighting)
 
 localPlayer.CharacterAdded:Connect(function()
@@ -381,7 +401,6 @@ localPlayer.CharacterAdded:Connect(function()
 	if currentWeatherState.active == true then
 		apply_cloudy_state(true)
 		set_rain_active(true)
-		apply_wind_indicator()
 	else
 		apply_cloudy_state(false)
 	end
