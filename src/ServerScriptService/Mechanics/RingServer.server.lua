@@ -4,6 +4,7 @@ local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage"
 
 ------------------//MODULES
 local DataUtility = require(ReplicatedStorage.Modules.Utility.DataUtility)
+local MultiplierUtility = require(ReplicatedStorage.Modules.Utility.MultiplierUtility)
 
 ------------------//CONSTANTS
 local MAX_MULTIPLIER_CAP: number = 20.0
@@ -38,15 +39,8 @@ end
 local function reset_player(player: Player): ()
 	collectedByPlayer[player.UserId] = {}
 
-	local currentBonus = ringBonusByPlayer[player.UserId] or 0
-	local currentMult = player:GetAttribute("Multiplier") or 1
-
-	if currentBonus > 0 then
-		local restoredMult = math.max(1, currentMult - currentBonus)
-		player:SetAttribute("Multiplier", restoredMult)
-	end
-
 	ringBonusByPlayer[player.UserId] = 0
+	MultiplierUtility.set_additive(player, "RingBonus", 0)
 	ringEvent:FireClient(player, "Restore")
 end
 
@@ -85,31 +79,36 @@ local function process_collection(player: Player, ring: BasePart): ()
 		ringValue = ringValue * 1.5 
 	end
 
-	local currentMult = player:GetAttribute("Multiplier") or 1
+	local currentMult = MultiplierUtility.get(player)
 	local currentBonus = ringBonusByPlayer[player.UserId] or 0
-
-	local potentialMult = currentMult + ringValue
+	local factorProduct = math.max(0.001, MultiplierUtility.get_factor_product(player))
+	local ringValueFinal = ringValue * factorProduct
+	local potentialMult = currentMult + ringValueFinal
 
 	if potentialMult > MAX_MULTIPLIER_CAP then
 		local difference = MAX_MULTIPLIER_CAP - currentMult
 		if difference <= 0 then 
 			return 
 		end
-		ringValue = difference
+		ringValueFinal = difference
 		potentialMult = MAX_MULTIPLIER_CAP
 	end
 
-	local newBonus = currentBonus + ringValue
+	local rawRingBonus = ringValueFinal / factorProduct
+	local newBonus = currentBonus + rawRingBonus
 
 	ringBonusByPlayer[player.UserId] = newBonus
-	player:SetAttribute("Multiplier", potentialMult)
+	MultiplierUtility.set_additive(player, "RingBonus", newBonus)
+	potentialMult = MultiplierUtility.get(player)
 
-	ringEvent:FireClient(player, "Collect", potentialMult, ring, ringValue)
+	ringEvent:FireClient(player, "Collect", potentialMult, ring, ringValueFinal)
 end
 
 local function bind_player(player: Player): ()
 	collectedByPlayer[player.UserId] = {}
 	ringBonusByPlayer[player.UserId] = 0
+	MultiplierUtility.init(player)
+	MultiplierUtility.set_additive(player, "RingBonus", 0)
 
 	if pogoStateConns[player.UserId] then
 		pogoStateConns[player.UserId]:Disconnect()

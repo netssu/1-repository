@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 ------------------//CONSTANTS
 local DATA_UTILITY = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Utility"):WaitForChild(
 	"DataUtility"))
+local MultiplierUtility = require(ReplicatedStorage.Modules.Utility.MultiplierUtility)
 
 local BASE_LUCKY = 1
 
@@ -17,25 +18,13 @@ local BOOST_DURATION = 120
 
 ------------------//VARIABLES
 local boostTimers = {}
-local playerMultiplierFactor = {}
 local playerLuckyFactor = {}
 
 ------------------//FUNCTIONS
 local function updatePlayerMultiplier(player)
-	local userId = player.UserId
-	local oldFactor = playerMultiplierFactor[userId] or 1
-
 	local coins2xDuration = player:GetAttribute("Coins2xDuration") or 0
 	local newFactor = coins2xDuration > 0 and BOOST_MULTIPLIERS.Coins2x or 1
-
-	if newFactor == oldFactor then return end
-
-	local currentTotal = player:GetAttribute("Multiplier") or 1
-	local baseWithoutBoost = currentTotal / (oldFactor > 0 and oldFactor or 1)
-	local finalMultiplier = baseWithoutBoost * newFactor
-
-	playerMultiplierFactor[userId] = newFactor
-	player:SetAttribute("Multiplier", finalMultiplier)
+	MultiplierUtility.set_factor(player, "CoinsBoost", newFactor)
 end
 
 local function updatePlayerLucky(player)
@@ -170,12 +159,9 @@ end)
 Players.PlayerAdded:Connect(function(player)
 	local userId = player.UserId
 
-	playerMultiplierFactor[userId] = 1
 	playerLuckyFactor[userId] = 1
 
-	if not player:GetAttribute("Multiplier") then
-		player:SetAttribute("Multiplier", 1)
-	end
+	MultiplierUtility.init(player)
 
 	if not player:GetAttribute("Lucky") then
 		player:SetAttribute("Lucky", BASE_LUCKY)
@@ -195,7 +181,6 @@ Players.PlayerRemoving:Connect(function(player)
 		end
 		boostTimers[userId] = nil
 	end
-	playerMultiplierFactor[userId] = nil
 	playerLuckyFactor[userId] = nil
 end)
 
