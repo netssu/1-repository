@@ -323,3 +323,5 @@ localPlayer.CharacterAdded:Connect(function()
 		set_rain_active(true)
 	end
 end)
+
+RunService.RenderStepped:Connect(apply_air_wind)
