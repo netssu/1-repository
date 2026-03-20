@@ -17,7 +17,7 @@ local WIND_AIR_ACCELERATION = 200 -- studs/s² horizontais no ar
 local WIND_MAX_HORIZONTAL_SPEED = 85
 local RAIN_EFFECT_OFFSET = CFrame.new(0, 10, 0)
 local RAIN_EFFECT_NAME = "GlobalWeatherRain"
-local WIND_ARROW_GUI_NAME = "WindArrowGui"
+local WIND_ARROW_PART_NAME = "WindArrowPart"
 
 ------------------//STATE
 local activeAtmosphereTween: Tween? = nil
@@ -40,26 +40,47 @@ local lightingDefaults = {
 ------------------//UI
 local localPlayer = Players.LocalPlayer
 
-local function get_or_create_wind_indicator(): TextLabel?
-	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-	if not playerGui then
-		return nil
+local function get_or_create_wind_indicator(): (BasePart?, TextLabel?)
+	local character = localPlayer.Character
+	if not character then
+		return nil, nil
 	end
 
-	local existingGui = playerGui:FindFirstChild(WIND_ARROW_GUI_NAME)
-	if existingGui and existingGui:IsA("ScreenGui") then
-		local existingArrow = existingGui:FindFirstChild("Arrow")
-		if existingArrow and existingArrow:IsA("TextLabel") then
-			return existingArrow
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if not rootPart or not rootPart:IsA("BasePart") then
+		return nil, nil
+	end
+
+	local existingPart = character:FindFirstChild(WIND_ARROW_PART_NAME)
+	if existingPart and existingPart:IsA("BasePart") then
+		local existingGui = existingPart:FindFirstChild("ArrowSurface")
+		if existingGui and existingGui:IsA("SurfaceGui") then
+			local existingArrow = existingGui:FindFirstChild("Arrow")
+			if existingArrow and existingArrow:IsA("TextLabel") then
+				return existingPart, existingArrow
+			end
 		end
 	end
 
-	local screenGui = Instance.new("ScreenGui")
-	screenGui.Name = WIND_ARROW_GUI_NAME
-	screenGui.ResetOnSpawn = false
-	screenGui.IgnoreGuiInset = true
-	screenGui.DisplayOrder = 20
-	screenGui.Parent = playerGui
+	local arrowPart = Instance.new("Part")
+	arrowPart.Name = WIND_ARROW_PART_NAME
+	arrowPart.Size = Vector3.new(3.2, 1.8, 0.4)
+	arrowPart.Transparency = 1
+	arrowPart.CanCollide = false
+	arrowPart.CanQuery = false
+	arrowPart.CanTouch = false
+	arrowPart.Massless = true
+	arrowPart.Anchored = true
+	arrowPart.CFrame = rootPart.CFrame * CFrame.new(0, 4.5, 0)
+	arrowPart.Parent = character
+
+	local surface = Instance.new("SurfaceGui")
+	surface.Name = "ArrowSurface"
+	surface.Face = Enum.NormalId.Front
+	surface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	surface.PixelsPerStud = 50
+	surface.AlwaysOnTop = true
+	surface.Parent = arrowPart
 
 	local arrow = Instance.new("TextLabel")
 	arrow.Name = "Arrow"
@@ -71,11 +92,37 @@ local function get_or_create_wind_indicator(): TextLabel?
 	arrow.TextScaled = true
 	arrow.TextColor3 = Color3.fromRGB(220, 240, 255)
 	arrow.TextStrokeTransparency = 0.35
-	arrow.Text = "➤"
+	arrow.Text = "➡"
 	arrow.TextTransparency = 1
-	arrow.Parent = screenGui
+	arrow.Parent = surface
 
-	return arrow
+	return arrowPart, arrow
+end
+
+local function update_wind_indicator_transform()
+	local indicatorPart = get_or_create_wind_indicator()
+	if not indicatorPart then
+		return
+	end
+
+	local direction = currentWeatherState.direction
+	if typeof(direction) ~= "Vector3" then
+		direction = Vector3.new(0, 0, -1)
+	end
+
+	local horizontal = Vector3.new(direction.X, 0, direction.Z)
+	if horizontal.Magnitude < 0.001 then
+		horizontal = Vector3.new(0, 0, -1)
+	else
+		horizontal = horizontal.Unit
+	end
+
+	local character = localPlayer.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+	if rootPart and rootPart:IsA("BasePart") then
+		local partPosition = rootPart.Position + Vector3.new(0, 4.5, 0)
+		indicatorPart.CFrame = CFrame.lookAt(partPosition, partPosition + horizontal, Vector3.yAxis)
+	end
 end
 
 ------------------//FUNCTIONS
@@ -250,28 +297,14 @@ local function update_rain_follow_camera()
 	rainPart.CFrame = CFrame.lookAt(rainPosition, rainPosition + horizontalWind, Vector3.yAxis)
 end
 
-local function direction_to_rotation(direction: Vector3): number
-	local horizontal = Vector3.new(direction.X, 0, direction.Z)
-	if horizontal.Magnitude < 0.001 then
-		return 0
-	end
-
-	return math.deg(math.atan2(horizontal.Z, horizontal.X))
-end
-
 local function apply_wind_indicator(state: {[string]: any})
-	local indicator = get_or_create_wind_indicator()
-	if not indicator then
+	local indicatorPart, indicator = get_or_create_wind_indicator()
+	if not indicatorPart or not indicator then
 		return
 	end
 	local active = state.active == true
-	local direction = state.direction
 
-	if typeof(direction) ~= "Vector3" then
-		direction = Vector3.new(0, 0, -1)
-	end
-
-	indicator.Rotation = direction_to_rotation(direction)
+	update_wind_indicator_transform()
 
 	if indicatorTween then
 		indicatorTween:Cancel()
@@ -344,6 +377,7 @@ end)
 
 RunService.RenderStepped:Connect(apply_air_wind)
 RunService.RenderStepped:Connect(update_rain_follow_camera)
+RunService.RenderStepped:Connect(update_wind_indicator_transform)
 
 localPlayer.CharacterAdded:Connect(function()
 	task.wait(0.2)
