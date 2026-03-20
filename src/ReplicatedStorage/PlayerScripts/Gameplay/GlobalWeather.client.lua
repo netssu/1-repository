@@ -9,24 +9,23 @@ local Workspace = game:GetService("Workspace")
 ------------------//CONSTANTS
 local remotesFolder = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Remotes")
 local weatherRemote = remotesFolder:WaitForChild("GlobalWeatherEvent")
+local NotificationUtility = require(ReplicatedStorage.Modules.Utility.NotificationUtility)
 
 local WEATHER_ATMOSPHERE_NAME = "GlobalWeatherAtmosphere"
 local LIGHTING_TWEEN = TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local INDICATOR_TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local WIND_AIR_ACCELERATION = 200 -- studs/s² horizontais no ar
 local WIND_MAX_HORIZONTAL_SPEED = 85
 local RAIN_EFFECT_OFFSET = CFrame.new(0, 10, 0)
 local RAIN_EFFECT_NAME = "GlobalWeatherRain"
-local WIND_ARROW_GUI_NAME = "WindArrowBillboard"
 
 ------------------//STATE
 local activeAtmosphereTween: Tween? = nil
-local indicatorTween: Tween? = nil
 local activeLightingTweens: {Tween} = {}
 local currentWeatherState: {[string]: any} = {
 	active = false,
 	direction = Vector3.new(0, 0, -1),
 }
+local lastWeatherActive = false
 local lightingDefaults = {
 	Brightness = Lighting.Brightness,
 	ClockTime = Lighting.ClockTime,
@@ -40,45 +39,31 @@ local lightingDefaults = {
 ------------------//UI
 local localPlayer = Players.LocalPlayer
 
-local function get_or_create_wind_indicator(): TextLabel?
-	local character = localPlayer.Character
-	if not character then
-		return nil
+local function direction_to_side(direction: Vector3): string
+	local horizontal = Vector3.new(direction.X, 0, direction.Z)
+	if horizontal.Magnitude < 0.001 then
+		return "X+"
 	end
-
-	local rootPart = character:FindFirstChild("HumanoidRootPart")
-	if not rootPart or not rootPart:IsA("BasePart") then
-		return nil
+	horizontal = horizontal.Unit
+	if math.abs(horizontal.X) >= math.abs(horizontal.Z) then
+		return horizontal.X >= 0 and "X+" or "X-"
 	end
+	return horizontal.Z >= 0 and "Z+" or "Z-"
+end
 
-	local existingGui = rootPart:FindFirstChild(WIND_ARROW_GUI_NAME)
-	if existingGui and existingGui:IsA("BillboardGui") then
-		local existingArrow = existingGui:FindFirstChild("Arrow")
-		if existingArrow and existingArrow:IsA("TextLabel") then
-			return existingArrow
-		end
-	end
-
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = WIND_ARROW_GUI_NAME
-	billboard.Adornee = rootPart
-	billboard.Size = UDim2.fromOffset(54, 54)
-	billboard.StudsOffset = Vector3.new(0, 4.5, 0)
-	billboard.AlwaysOnTop = true
-	billboard.Parent = rootPart
-
-	local arrow = Instance.new("TextLabel")
-	arrow.Name = "Arrow"
-	arrow.Size = UDim2.fromScale(1, 1)
-	arrow.BackgroundTransparency = 1
-	arrow.Font = Enum.Font.GothamBlack
-	arrow.TextScaled = true
-	arrow.TextColor3 = Color3.fromRGB(220, 240, 255)
-	arrow.TextStrokeTransparency = 0.35
-	arrow.Text = "➡️"
-	arrow.Parent = billboard
-
-	return arrow
+local function show_weather_start_notice(direction: Vector3)
+	local side = direction_to_side(direction)
+	NotificationUtility:Show({
+		type = "action",
+		title = "CLIMA GLOBAL",
+		message = "Começou a chover! O vento está empurrando você para o lado "
+			.. side
+			.. ". Confirme que entendeu para fechar este aviso.",
+		buttonText = "Entendi",
+		callback = function() end,
+		duration = 99999,
+		priority = 999,
+	})
 end
 
 ------------------//FUNCTIONS
@@ -156,6 +141,20 @@ local function apply_cloudy_state(isActive: boolean)
 		table.insert(activeLightingTweens, restoreLightingTween)
 		restoreLightingTween:Play()
 	end
+end
+
+local function enforce_weather_lighting()
+	if currentWeatherState.active ~= true then
+		return
+	end
+
+	Lighting.Brightness = 1.1
+	Lighting.ClockTime = 16.2
+	Lighting.OutdoorAmbient = Color3.fromRGB(46, 54, 66)
+	Lighting.Ambient = Color3.fromRGB(40, 45, 55)
+	Lighting.EnvironmentDiffuseScale = 0.22
+	Lighting.EnvironmentSpecularScale = 0.08
+	Lighting.ExposureCompensation = -0.45
 end
 
 local function get_or_create_rain_effect(character: Model): BasePart?
@@ -237,43 +236,20 @@ local function update_rain_follow_camera()
 		return
 	end
 
-	rainPart.CFrame = camera.CFrame * RAIN_EFFECT_OFFSET
-end
-
-local function direction_to_arrow(direction: Vector3): string
-	if direction.Magnitude < 0.001 then
-		return "↑"
-	end
-
-	local angle = math.atan2(direction.X, -direction.Z)
-	local octant = math.floor(((angle / (2 * math.pi)) * 8) + 0.5) % 8
-	local arrows = {"↑", "↗", "→", "↘", "↓", "↙", "←", "↖"}
-	return arrows[octant + 1]
-end
-
-local function apply_wind_indicator(state: {[string]: any})
-	local indicator = get_or_create_wind_indicator()
-	if not indicator then
-		return
-	end
-	local active = state.active == true
-	local direction = state.direction
-
+	local direction = currentWeatherState.direction
 	if typeof(direction) ~= "Vector3" then
 		direction = Vector3.new(0, 0, -1)
 	end
 
-	indicator.Text = direction_to_arrow(direction)
-
-	if indicatorTween then
-		indicatorTween:Cancel()
-		indicatorTween = nil
+	local horizontalWind = Vector3.new(direction.X, 0, direction.Z)
+	if horizontalWind.Magnitude < 0.001 then
+		horizontalWind = Vector3.new(0, 0, -1)
+	else
+		horizontalWind = horizontalWind.Unit
 	end
 
-	indicatorTween = TweenService:Create(indicator, INDICATOR_TWEEN, {
-		TextTransparency = active and 0 or 1,
-	})
-	indicatorTween:Play()
+	local rainPosition = (camera.CFrame * RAIN_EFFECT_OFFSET).Position
+	rainPart.CFrame = CFrame.lookAt(rainPosition, rainPosition + horizontalWind, Vector3.yAxis)
 end
 
 local function apply_air_wind(dt: number)
@@ -330,18 +306,23 @@ weatherRemote.OnClientEvent:Connect(function(state)
 
 	currentWeatherState = state
 	apply_cloudy_state(state.active)
-	apply_wind_indicator(state)
 	set_rain_active(state.active)
+	if state.active and not lastWeatherActive then
+		show_weather_start_notice(state.direction)
+	end
+	lastWeatherActive = state.active
 end)
 
 RunService.RenderStepped:Connect(apply_air_wind)
 RunService.RenderStepped:Connect(update_rain_follow_camera)
+RunService.RenderStepped:Connect(enforce_weather_lighting)
 
 localPlayer.CharacterAdded:Connect(function()
 	task.wait(0.2)
 	if currentWeatherState.active == true then
+		apply_cloudy_state(true)
 		set_rain_active(true)
+	else
+		apply_cloudy_state(false)
 	end
 end)
-
-RunService.RenderStepped:Connect(apply_air_wind)

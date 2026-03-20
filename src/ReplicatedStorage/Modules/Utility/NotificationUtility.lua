@@ -247,10 +247,11 @@ function NotificationController:ShowInternal(notifData: any): ()
 	end
 
 	animate_in(notifFrame, function()
-		-- CORREÇÃO: Removemos a trava 'if not notifData.callback'
-		task.delay(notifData.duration, function()
-			remove_notification(notifId)
-		end)
+		if not notifData.callback then
+			task.delay(notifData.duration, function()
+				remove_notification(notifId)
+			end)
+		end
 	end)
 
 	if notifData.callback and buyButton then
