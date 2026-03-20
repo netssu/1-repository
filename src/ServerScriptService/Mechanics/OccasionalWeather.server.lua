@@ -1,9 +1,9 @@
 ------------------//SERVICES
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
 local MultiplierUtility = require(ReplicatedStorage.Modules.Utility.MultiplierUtility)
+local WeatherControl = require(script.Parent:WaitForChild("WeatherControl"))
 
 ------------------//CONSTANTS
 local remotesFolder = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Remotes")
@@ -20,9 +20,8 @@ local EVENT_DURATION_SECONDS = 5 * 60 -- primeiros 5 minutos de cada hora cheia
 local WEATHER_MULTIPLIER_ACTIVE = 2
 local WEATHER_MULTIPLIER_IDLE = 1
 
-local PUSH_STRENGTH = 6 -- força horizontal leve
+local WIND_PUSH_FORCE = 18
 local PUSH_INTERVAL = 0.2
-local FORCED_RAIN_DEFAULT_SECONDS = 5 * 60
 
 local CLOUDS_NAME = "GlobalWeatherClouds"
 
@@ -36,7 +35,6 @@ local activeState = {
 }
 
 local pushAccumulator = 0
-local forcedRainUntil = 0
 
 ------------------//FUNCTIONS (Random determinístico)
 local function hash_int(value: number): number
@@ -72,10 +70,16 @@ end
 
 ------------------//FUNCTIONS (Visual)
 local function get_clouds(): Clouds?
-	local clouds = Lighting:FindFirstChild(CLOUDS_NAME)
+	local clouds = workspace.Terrain:FindFirstChild(CLOUDS_NAME)
 	if clouds and clouds:IsA("Clouds") then
 		return clouds
 	end
+
+	local fallbackClouds = workspace.Terrain:FindFirstChildOfClass("Clouds")
+	if fallbackClouds then
+		return fallbackClouds
+	end
+
 	return nil
 end
 
@@ -88,7 +92,7 @@ local function ensure_clouds(): Clouds
 	local newClouds = Instance.new("Clouds")
 	newClouds.Name = CLOUDS_NAME
 	newClouds.Color = Color3.fromRGB(220, 226, 230)
-	newClouds.Parent = Lighting
+	newClouds.Parent = workspace.Terrain
 	return newClouds
 end
 
@@ -98,10 +102,9 @@ local function apply_weather_visuals(state)
 		clouds.Cover = 1
 		clouds.Density = 1
 	else
-		local clouds = get_clouds()
-		if clouds then
-			clouds:Destroy()
-		end
+		local clouds = ensure_clouds()
+		clouds.Cover = 0
+		clouds.Density = 0
 	end
 end
 
@@ -127,7 +130,7 @@ local function push_players(dt: number)
 	end
 	pushAccumulator = 0
 
-	local deltaVelocity = activeState.direction * PUSH_STRENGTH
+	local deltaVelocity = activeState.direction * WIND_PUSH_FORCE
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		local character = player.Character
@@ -153,7 +156,7 @@ local function sync_weather_state(forceBroadcast: boolean?)
 	local now = os.time()
 	local hourSlot = math.floor(now / HOUR_SECONDS)
 	local nextState = get_hour_state(hourSlot, now)
-	if now < forcedRainUntil then
+	if WeatherControl.is_forced_active(now) then
 		nextState.active = true
 	end
 
@@ -167,17 +170,8 @@ local function sync_weather_state(forceBroadcast: boolean?)
 	end
 end
 
-local function force_rain_for(seconds: number?)
-	local duration = tonumber(seconds) or FORCED_RAIN_DEFAULT_SECONDS
-	duration = math.max(10, math.floor(duration))
-	forcedRainUntil = os.time() + duration
-	sync_weather_state(true)
-end
-
 ------------------//INIT
 sync_weather_state(true)
-_G.WeatherEventManager = _G.WeatherEventManager or {}
-_G.WeatherEventManager.forceRainFor = force_rain_for
 
 Players.PlayerAdded:Connect(function(player)
 	MultiplierUtility.init(player)

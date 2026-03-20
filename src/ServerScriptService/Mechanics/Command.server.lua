@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 ------------------//MODULES
 local DataUtility = require(ReplicatedStorage.Modules.Utility.DataUtility)
 local WorldConfig = require(ReplicatedStorage.Modules.Datas.WorldConfig)
+local WeatherControl = require(script.Parent:WaitForChild("WeatherControl"))
 
 ------------------//CONFIG
 local ADMINS = {
@@ -88,14 +89,8 @@ local COMMANDS = {
 	end,
 
 	["rain"] = function(player, args)
-		local weatherManager = _G.WeatherEventManager
-		if not weatherManager or not weatherManager.forceRainFor then
-			warn("WeatherEventManager não encontrado para :rain")
-			return
-		end
-
 		local duration = tonumber(args[1]) or 300
-		weatherManager.forceRainFor(duration)
+		WeatherControl.force_rain_for(duration)
 		print("Chuva forçada por", duration, "segundos por", player.Name)
 	end
 }

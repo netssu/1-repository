@@ -9,7 +9,6 @@ local Players = game:GetService("Players")
 local remotesFolder = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Remotes")
 local weatherRemote = remotesFolder:WaitForChild("GlobalWeatherEvent")
 
-local CLOUDS_NAME = "GlobalWeatherClouds"
 local WEATHER_ATMOSPHERE_NAME = "GlobalWeatherAtmosphere"
 local LIGHTING_TWEEN = TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local LOCAL_WIND_PART_NAME = "LocalWindParticles"
@@ -21,27 +20,6 @@ local localWindEmitter: ParticleEmitter? = nil
 local activeWindDirection = Vector3.new(1, 0, 0)
 
 ------------------//FUNCTIONS
-local function get_clouds(): Clouds?
-	local clouds = Lighting:FindFirstChild(CLOUDS_NAME)
-	if clouds and clouds:IsA("Clouds") then
-		return clouds
-	end
-	return nil
-end
-
-local function ensure_clouds(): Clouds
-	local clouds = get_clouds()
-	if clouds then
-		return clouds
-	end
-
-	local newClouds = Instance.new("Clouds")
-	newClouds.Name = CLOUDS_NAME
-	newClouds.Color = Color3.fromRGB(220, 226, 230)
-	newClouds.Parent = Lighting
-	return newClouds
-end
-
 local function get_or_create_atmosphere(): Atmosphere
 	local atmosphere = Lighting:FindFirstChild(WEATHER_ATMOSPHERE_NAME)
 	if atmosphere and atmosphere:IsA("Atmosphere") then
@@ -90,22 +68,24 @@ local function get_or_create_local_wind_emitter(): ParticleEmitter
 	if not (emitter and emitter:IsA("ParticleEmitter")) then
 		emitter = Instance.new("ParticleEmitter")
 		emitter.Name = "WindEmitter"
-		emitter.Texture = "rbxassetid://7712212240"
+		emitter.Texture = "rbxassetid://4843124280"
 		emitter.Rate = 0
-		emitter.Lifetime = NumberRange.new(1.3, 2)
-		emitter.Speed = NumberRange.new(25, 36)
-		emitter.SpreadAngle = Vector2.new(12, 12)
+		emitter.Lifetime = NumberRange.new(0.7, 1.2)
+		emitter.Speed = NumberRange.new(45, 65)
+		emitter.SpreadAngle = Vector2.new(18, 18)
 		emitter.Rotation = NumberRange.new(0, 360)
-		emitter.RotSpeed = NumberRange.new(-120, 120)
+		emitter.RotSpeed = NumberRange.new(-180, 180)
 		emitter.Size = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.25),
+			NumberSequenceKeypoint.new(0, 0.18),
 			NumberSequenceKeypoint.new(1, 0),
 		})
 		emitter.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.25),
+			NumberSequenceKeypoint.new(0, 0.15),
 			NumberSequenceKeypoint.new(0.7, 0.65),
 			NumberSequenceKeypoint.new(1, 1),
 		})
+		emitter.LightInfluence = 0
+		emitter.Enabled = true
 		emitter.Parent = attachment
 	end
 
@@ -129,11 +109,8 @@ local function apply_cloudy_state(isActive: boolean, windDirection: Vector3?)
 				activeWindDirection = flatDirection.Unit
 			end
 		end
-		local clouds = ensure_clouds()
-		clouds.Cover = 1
-		clouds.Density = 1
-		emitter.Rate = 140
-		emitter.Acceleration = activeWindDirection * 32
+		emitter.Rate = 220
+		emitter.Acceleration = activeWindDirection * 60
 
 		activeAtmosphereTween = TweenService:Create(atmosphere, LIGHTING_TWEEN, {
 			Density = 0.44,
@@ -142,10 +119,6 @@ local function apply_cloudy_state(isActive: boolean, windDirection: Vector3?)
 			Decay = Color3.fromRGB(120, 130, 145),
 		})
 	else
-		local clouds = get_clouds()
-		if clouds then
-			clouds:Destroy()
-		end
 		emitter.Rate = 0
 		emitter.Acceleration = Vector3.zero
 
@@ -178,7 +151,7 @@ RunService.RenderStepped:Connect(function()
 
 	local camera = workspace.CurrentCamera
 	if camera then
-		localWindPart.CFrame = camera.CFrame * CFrame.new(0, 0, -8)
+		localWindPart.CFrame = camera.CFrame * CFrame.new(0, 1, -4)
 		return
 	end
 
