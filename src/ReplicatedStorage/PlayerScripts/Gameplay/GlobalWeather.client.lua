@@ -2,6 +2,8 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting = game:GetService("Lighting")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 
 ------------------//CONSTANTS
 local remotesFolder = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Remotes")
@@ -10,13 +12,33 @@ local weatherRemote = remotesFolder:WaitForChild("GlobalWeatherEvent")
 local WEATHER_ATMOSPHERE_NAME = "GlobalWeatherAtmosphere"
 local LIGHTING_TWEEN = TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local INDICATOR_TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local WIND_AIR_ACCELERATION = 200 -- studs/s² horizontais no ar
+local WIND_MAX_HORIZONTAL_SPEED = 85
+local RAIN_EFFECT_OFFSET = CFrame.new(0, 10, 0)
+local RAIN_EFFECT_NAME = "GlobalWeatherRain"
+local RAIN_MOTOR_NAME = "GlobalWeatherRainMotor"
 
 ------------------//STATE
 local activeAtmosphereTween: Tween? = nil
 local indicatorTween: Tween? = nil
+local activeLightingTweens: {Tween} = {}
+local currentWeatherState: {[string]: any} = {
+	active = false,
+	direction = Vector3.new(0, 0, -1),
+}
+local lightingDefaults = {
+	Brightness = Lighting.Brightness,
+	ClockTime = Lighting.ClockTime,
+	OutdoorAmbient = Lighting.OutdoorAmbient,
+	Ambient = Lighting.Ambient,
+	EnvironmentDiffuseScale = Lighting.EnvironmentDiffuseScale,
+	EnvironmentSpecularScale = Lighting.EnvironmentSpecularScale,
+	ExposureCompensation = Lighting.ExposureCompensation,
+}
 
 ------------------//UI
-local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+local localPlayer = Players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui")
 local uiRoot = playerGui:WaitForChild("UI")
 
 local function get_or_create_wind_indicator(): TextLabel
@@ -81,10 +103,10 @@ local function apply_cloudy_state(isActive: boolean)
 
 	if isActive then
 		activeAtmosphereTween = TweenService:Create(atmosphere, LIGHTING_TWEEN, {
-			Density = 0.44,
-			Haze = 2.8,
-			Color = Color3.fromRGB(190, 198, 205),
-			Decay = Color3.fromRGB(120, 130, 145),
+			Density = 0.6,
+			Haze = 4.3,
+			Color = Color3.fromRGB(126, 137, 152),
+			Decay = Color3.fromRGB(60, 66, 78),
 		})
 	else
 		activeAtmosphereTween = TweenService:Create(atmosphere, LIGHTING_TWEEN, {
@@ -96,6 +118,109 @@ local function apply_cloudy_state(isActive: boolean)
 	end
 
 	activeAtmosphereTween:Play()
+
+	for _, tween in ipairs(activeLightingTweens) do
+		tween:Cancel()
+	end
+	table.clear(activeLightingTweens)
+
+	if isActive then
+		local rainyLightingTween = TweenService:Create(Lighting, LIGHTING_TWEEN, {
+			Brightness = 1.1,
+			ClockTime = 16.2,
+			OutdoorAmbient = Color3.fromRGB(46, 54, 66),
+			Ambient = Color3.fromRGB(40, 45, 55),
+			EnvironmentDiffuseScale = 0.22,
+			EnvironmentSpecularScale = 0.08,
+			ExposureCompensation = -0.45,
+		})
+		table.insert(activeLightingTweens, rainyLightingTween)
+		rainyLightingTween:Play()
+	else
+		local restoreLightingTween = TweenService:Create(Lighting, LIGHTING_TWEEN, {
+			Brightness = lightingDefaults.Brightness,
+			ClockTime = lightingDefaults.ClockTime,
+			OutdoorAmbient = lightingDefaults.OutdoorAmbient,
+			Ambient = lightingDefaults.Ambient,
+			EnvironmentDiffuseScale = lightingDefaults.EnvironmentDiffuseScale,
+			EnvironmentSpecularScale = lightingDefaults.EnvironmentSpecularScale,
+			ExposureCompensation = lightingDefaults.ExposureCompensation,
+		})
+		table.insert(activeLightingTweens, restoreLightingTween)
+		restoreLightingTween:Play()
+	end
+end
+
+local function get_or_create_rain_effect(character: Model): BasePart?
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if not rootPart or not rootPart:IsA("BasePart") then
+		return nil
+	end
+
+	local existing = character:FindFirstChild(RAIN_EFFECT_NAME)
+	if existing and existing:IsA("BasePart") then
+		return existing
+	end
+
+	local effectsFolder = ReplicatedStorage:FindFirstChild("Assets")
+	if not effectsFolder then
+		return nil
+	end
+
+	local effects = effectsFolder:FindFirstChild("Effects")
+	if not effects then
+		return nil
+	end
+
+	local rainTemplate = effects:FindFirstChild("Rain")
+	if not rainTemplate or not rainTemplate:IsA("BasePart") then
+		return nil
+	end
+
+	local rainPart = rainTemplate:Clone()
+	rainPart.Name = RAIN_EFFECT_NAME
+	rainPart.Anchored = false
+	rainPart.CanCollide = false
+	rainPart.CanQuery = false
+	rainPart.CanTouch = false
+	rainPart.Massless = true
+	rainPart.CFrame = rootPart.CFrame * RAIN_EFFECT_OFFSET
+	rainPart.Parent = character
+
+	local motor = Instance.new("Motor6D")
+	motor.Name = RAIN_MOTOR_NAME
+	motor.Part0 = rootPart
+	motor.Part1 = rainPart
+	motor.C0 = RAIN_EFFECT_OFFSET
+	motor.Parent = rootPart
+
+	return rainPart
+end
+
+local function set_rain_active(isActive: boolean)
+	local character = localPlayer.Character
+	if not character then
+		return
+	end
+
+	local rainPart = get_or_create_rain_effect(character)
+	if not rainPart then
+		return
+	end
+
+	for _, descendant in ipairs(rainPart:GetDescendants()) do
+		if descendant:IsA("ParticleEmitter") then
+			descendant.Enabled = isActive
+		elseif descendant:IsA("Sound") then
+			if isActive then
+				if not descendant.IsPlaying then
+					descendant:Play()
+				end
+			else
+				descendant:Stop()
+			end
+		end
+	end
 end
 
 local function direction_to_arrow(direction: Vector3): string
@@ -132,11 +257,69 @@ local function apply_wind_indicator(state: {[string]: any})
 	indicatorTween:Play()
 end
 
+local function apply_air_wind(dt: number)
+	if currentWeatherState.active ~= true then
+		return
+	end
+
+	local character = localPlayer.Character
+	if not character then
+		return
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if not humanoid or not rootPart or not rootPart:IsA("BasePart") or humanoid.Health <= 0 then
+		return
+	end
+
+	local state = humanoid:GetState()
+	local isAirborne = state == Enum.HumanoidStateType.Jumping
+		or state == Enum.HumanoidStateType.Freefall
+		or state == Enum.HumanoidStateType.FallingDown
+	if not isAirborne then
+		return
+	end
+
+	local direction = currentWeatherState.direction
+	if typeof(direction) ~= "Vector3" then
+		direction = Vector3.new(0, 0, -1)
+	end
+
+	local horizontalWind = Vector3.new(direction.X, 0, direction.Z)
+	if horizontalWind.Magnitude < 0.001 then
+		horizontalWind = Vector3.new(0, 0, -1)
+	else
+		horizontalWind = horizontalWind.Unit
+	end
+
+	local velocity = rootPart.AssemblyLinearVelocity
+	local horizontalVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+	local boostedHorizontal = horizontalVelocity + (horizontalWind * WIND_AIR_ACCELERATION * dt)
+
+	if boostedHorizontal.Magnitude > WIND_MAX_HORIZONTAL_SPEED then
+		boostedHorizontal = boostedHorizontal.Unit * WIND_MAX_HORIZONTAL_SPEED
+	end
+
+	rootPart.AssemblyLinearVelocity = Vector3.new(boostedHorizontal.X, velocity.Y, boostedHorizontal.Z)
+end
+
 ------------------//INIT
 weatherRemote.OnClientEvent:Connect(function(state)
 	if typeof(state) ~= "table" then return end
 	if type(state.active) ~= "boolean" then return end
 
+	currentWeatherState = state
 	apply_cloudy_state(state.active)
 	apply_wind_indicator(state)
+	set_rain_active(state.active)
+end)
+
+RunService.RenderStepped:Connect(apply_air_wind)
+
+localPlayer.CharacterAdded:Connect(function()
+	task.wait(0.2)
+	if currentWeatherState.active == true then
+		set_rain_active(true)
+	end
 end)
