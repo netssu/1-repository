@@ -2,6 +2,8 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting = game:GetService("Lighting")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 
 ------------------//CONSTANTS
 local remotesFolder = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Remotes")
@@ -10,13 +12,20 @@ local weatherRemote = remotesFolder:WaitForChild("GlobalWeatherEvent")
 local WEATHER_ATMOSPHERE_NAME = "GlobalWeatherAtmosphere"
 local LIGHTING_TWEEN = TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local INDICATOR_TWEEN = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local WIND_AIR_ACCELERATION = 22 -- studs/s² horizontais no ar
+local WIND_MAX_HORIZONTAL_SPEED = 85
 
 ------------------//STATE
 local activeAtmosphereTween: Tween? = nil
 local indicatorTween: Tween? = nil
+local currentWeatherState: {[string]: any} = {
+	active = false,
+	direction = Vector3.new(0, 0, -1),
+}
 
 ------------------//UI
-local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+local localPlayer = Players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui")
 local uiRoot = playerGui:WaitForChild("UI")
 
 local function get_or_create_wind_indicator(): TextLabel
@@ -132,11 +141,61 @@ local function apply_wind_indicator(state: {[string]: any})
 	indicatorTween:Play()
 end
 
+local function apply_air_wind(dt: number)
+	if currentWeatherState.active ~= true then
+		return
+	end
+
+	local character = localPlayer.Character
+	if not character then
+		return
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if not humanoid or not rootPart or not rootPart:IsA("BasePart") or humanoid.Health <= 0 then
+		return
+	end
+
+	local state = humanoid:GetState()
+	local isAirborne = state == Enum.HumanoidStateType.Jumping
+		or state == Enum.HumanoidStateType.Freefall
+		or state == Enum.HumanoidStateType.FallingDown
+	if not isAirborne then
+		return
+	end
+
+	local direction = currentWeatherState.direction
+	if typeof(direction) ~= "Vector3" then
+		direction = Vector3.new(0, 0, -1)
+	end
+
+	local horizontalWind = Vector3.new(direction.X, 0, direction.Z)
+	if horizontalWind.Magnitude < 0.001 then
+		horizontalWind = Vector3.new(0, 0, -1)
+	else
+		horizontalWind = horizontalWind.Unit
+	end
+
+	local velocity = rootPart.AssemblyLinearVelocity
+	local horizontalVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+	local boostedHorizontal = horizontalVelocity + (horizontalWind * WIND_AIR_ACCELERATION * dt)
+
+	if boostedHorizontal.Magnitude > WIND_MAX_HORIZONTAL_SPEED then
+		boostedHorizontal = boostedHorizontal.Unit * WIND_MAX_HORIZONTAL_SPEED
+	end
+
+	rootPart.AssemblyLinearVelocity = Vector3.new(boostedHorizontal.X, velocity.Y, boostedHorizontal.Z)
+end
+
 ------------------//INIT
 weatherRemote.OnClientEvent:Connect(function(state)
 	if typeof(state) ~= "table" then return end
 	if type(state.active) ~= "boolean" then return end
 
+	currentWeatherState = state
 	apply_cloudy_state(state.active)
 	apply_wind_indicator(state)
 end)
+
+RunService.RenderStepped:Connect(apply_air_wind)
