@@ -5,6 +5,7 @@ local RunService = game:GetService("RunService")
 
 local DATA_UTILITY = require(ReplicatedStorage.Modules.Utility.DataUtility)
 local DATA_PETS = require(ReplicatedStorage.Modules.Datas.PetsData)
+local MultiplierUtility = require(ReplicatedStorage.Modules.Utility.MultiplierUtility)
 
 -- CONFIG
 local PET_DISTANCE = 6
@@ -120,7 +121,7 @@ local function updateMultiplier(player)
 		end
 	end
 
-	player:SetAttribute("Multiplier", total)
+	MultiplierUtility.set_base(player, total)
 end
 
 ---------------------------------------------------

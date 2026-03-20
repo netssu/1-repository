@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 ------------------//MODULES
 local DataUtility = require(ReplicatedStorage.Modules.Utility.DataUtility)
 local WorldConfig = require(ReplicatedStorage.Modules.Datas.WorldConfig)
+local WeatherControl = require(script.Parent:WaitForChild("WeatherControl"))
 
 ------------------//CONFIG
 local ADMINS = {
@@ -85,6 +86,12 @@ local COMMANDS = {
 		DataUtility.server.set(player, "Rebirths", 0)
 		teleport_to_world(player, 1)
 		print("Conta resetada")
+	end,
+
+	["rain"] = function(player, args)
+		local duration = tonumber(args[1]) or 300
+		WeatherControl.force_rain_for(duration)
+		print("Chuva forçada por", duration, "segundos por", player.Name)
 	end
 }
 
