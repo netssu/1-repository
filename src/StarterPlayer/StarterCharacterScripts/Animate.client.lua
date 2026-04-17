@@ -31,20 +31,22 @@ local currentAnimSpeed = 1.0
 local animTable = {}
 local animNames = { 
 	idle = 	{	
-		{ id = "http://www.roblox.com/asset/?id=180435571", weight = 9 },
-		{ id = "http://www.roblox.com/asset/?id=180435792", weight = 1 }
+		{ id = "rbxassetid://96598801320438", weight = 10 }
 	},
 	walk = 	{ 	
-		{ id = "http://www.roblox.com/asset/?id=180426354", weight = 10 } 
+		{ id = "rbxassetid://93085828181864", weight = 10 } 
 	}, 
 	run = 	{
-		{ id = "run.xml", weight = 10 } 
+		{ id = "rbxassetid://125450043620312", weight = 10 } 
+	}, 
+	runOnKeybind = 	{
+		{ id = "rbxassetid://125450043620312", weight = 10 } 
 	}, 
 	jump = 	{
-		{ id = "rbxassetid://1000000", weight = 10 } 
+		{ id = "http://www.roblox.com/asset/?id=125750702", weight = 10 } 
 	}, 
 	fall = 	{
-		{ id = "rbxassetid://1000000", weight = 10 } 
+		{ id = "http://www.roblox.com/asset/?id=180436148", weight = 10 } 
 	}, 
 	climb = {
 		{ id = "http://www.roblox.com/asset/?id=180436334", weight = 10 } 
@@ -97,7 +99,7 @@ local emoteNames = { wave = false, point = false, dance1 = true, dance2 = true, 
 
 function configureAnimationSet(name, fileList)
 	if (animTable[name] ~= nil) then
-		for _, connection in pairs(animTable[name].connections) do
+		for _, connection in animTable[name].connections do
 			connection:disconnect()
 		end
 	end
@@ -113,7 +115,7 @@ function configureAnimationSet(name, fileList)
 		table.insert(animTable[name].connections, config.ChildAdded:connect(function(child) configureAnimationSet(name, fileList) end))
 		table.insert(animTable[name].connections, config.ChildRemoved:connect(function(child) configureAnimationSet(name, fileList) end))
 		local idx = 1
-		for _, childPart in pairs(config:GetChildren()) do
+		for _, childPart in config:GetChildren() do
 			if (childPart:IsA("Animation")) then
 				table.insert(animTable[name].connections, childPart.Changed:connect(function(property) configureAnimationSet(name, fileList) end))
 				animTable[name][idx] = {}
@@ -134,7 +136,7 @@ function configureAnimationSet(name, fileList)
 
 	-- fallback to defaults
 	if (animTable[name].count <= 0) then
-		for idx, anim in pairs(fileList) do
+		for idx, anim in fileList do
 			animTable[name][idx] = {}
 			animTable[name][idx].anim = Instance.new("Animation")
 			animTable[name][idx].anim.Name = name
@@ -163,14 +165,14 @@ script.ChildRemoved:connect(scriptChildModified)
 local animator = if Humanoid then Humanoid:FindFirstChildOfClass("Animator") else nil
 if animator then
 	local animTracks = animator:GetPlayingAnimationTracks()
-	for i,track in ipairs(animTracks) do
-		track:Stop(.5)
+	for i,track in animTracks do
+		track:Stop(0)
 		track:Destroy()
 	end
 end
 
 
-for name, fileList in pairs(animNames) do 
+for name, fileList in animNames do 
 	configureAnimationSet(name, fileList)
 end	
 
@@ -204,7 +206,7 @@ function stopAllAnimations()
 	end
 
 	if (currentAnimTrack ~= nil) then
-		currentAnimTrack:Stop(.5)
+		currentAnimTrack:Stop()
 		currentAnimTrack:Destroy()
 		currentAnimTrack = nil
 	end
@@ -262,9 +264,11 @@ function playAnimation(animName, transitionTime, humanoid)
 
 		-- play the animation
 		currentAnimTrack:Play(transitionTime)
+		if animName == "walk" then
+			currentAnimTrack:AdjustSpeed(1)
+		end
 		currentAnim = animName
 		currentAnimInstance = anim
-
 		-- set up keyframe name triggers
 		if (currentAnimKeyframeHandler ~= nil) then
 			currentAnimKeyframeHandler:disconnect()
@@ -336,7 +340,7 @@ function stopToolAnimations()
 	toolAnimName = ""
 	toolAnimInstance = nil
 	if (toolAnimTrack ~= nil) then
-		toolAnimTrack:Stop(.5)
+		toolAnimTrack:Stop()
 		toolAnimTrack:Destroy()
 		toolAnimTrack = nil
 	end
@@ -349,18 +353,38 @@ end
 -------------------------------------------------------------------------------------------
 
 
-function onRunning(speed)
-	speed /= getRigScale()
+--function onRunning(speed)
+--	speed /= getRigScale()
 
-	if speed > 0.01 then
-		playAnimation("walk", 0.5, Humanoid)
-		if currentAnimInstance and currentAnimInstance.AnimationId == "http://www.roblox.com/asset/?id=180426354" then
-			setAnimationSpeed(speed / 14.5)
-		end
+--	if speed > 0.01 then
+--		playAnimation("walk", 0.1, Humanoid)
+--		if currentAnimInstance and currentAnimInstance.AnimationId == "http://www.roblox.com/asset/?id=180426354" then
+--			setAnimationSpeed(speed / 14.5)
+--		end
+--		pose = "Running"
+--	else
+--		if emoteNames[currentAnim] == nil then
+--			playAnimation("idle", 0.1, Humanoid)
+--			pose = "Standing"
+--		end
+--	end
+--end
+
+function onRunning(speed)	
+	if speed > 0.75 and Humanoid.WalkSpeed <= 16 then
+		local scale = Humanoid.WalkSpeed -- 16.0
+		playAnimation("walk", 0.2, Humanoid)
+		--setAnimationSpeed(speed / scale)
+		pose = "Running"
+	elseif speed > 0.75 and Humanoid.WalkSpeed > 16 then
+		local scale = Humanoid.WalkSpeed -- 16.0
+		--playAnimation("runOnKeybind", 0.5, Humanoid)
+		playAnimation("run", 0.5, Humanoid)
+		setAnimationSpeed(speed / scale)
 		pose = "Running"
 	else
 		if emoteNames[currentAnim] == nil then
-			playAnimation("idle", 0.5, Humanoid)
+			playAnimation("idle", 0.2, Humanoid)
 			pose = "Standing"
 		end
 	end
@@ -371,7 +395,7 @@ function onDied()
 end
 
 function onJumping()
---	playAnimation("jump", 0.1, Humanoid)
+	playAnimation("jump", 0.1, Humanoid)
 	jumpAnimTime = jumpAnimDuration
 	pose = "Jumping"
 end
@@ -416,14 +440,14 @@ function onSwimming(speed)
 end
 
 function getTool()	
-	for _, kid in ipairs(Figure:GetChildren()) do
+	for _, kid in Figure:GetChildren() do
 		if kid.className == "Tool" then return kid end
 	end
 	return nil
 end
 
 function getToolAnim(tool)
-	for _, c in ipairs(tool:GetChildren()) do
+	for _, c in tool:GetChildren() do
 		if c.Name == "toolanim" and c.className == "StringValue" then
 			return c
 		end
@@ -479,7 +503,11 @@ function move(time)
 		playAnimation("sit", 0.5, Humanoid)
 		return
 	elseif (pose == "Running") then
-		playAnimation("walk", 0.1, Humanoid)
+		if Humanoid.WalkSpeed <= 16 then
+			playAnimation("walk", 0.2, Humanoid)
+		else
+			playAnimation("run", 0.5, Humanoid)
+		end
 	elseif (pose == "Dead" or pose == "GettingUp" or pose == "FallingDown" or pose == "Seated" or pose == "PlatformStanding") then
 		--		print("Wha " .. pose)
 		stopAllAnimations()
@@ -527,14 +555,32 @@ end
 -- connect events
 Humanoid.Died:connect(onDied)
 Humanoid.Running:connect(onRunning)
---Humanoid.Jumping:connect(onJumping)
+Humanoid.Jumping:connect(onJumping)
 Humanoid.Climbing:connect(onClimbing)
 Humanoid.GettingUp:connect(onGettingUp)
---Humanoid.FreeFalling:connect(onFreeFall)
+Humanoid.FreeFalling:connect(onFreeFall)
 Humanoid.FallingDown:connect(onFallingDown)
 Humanoid.Seated:connect(onSeated)
 Humanoid.PlatformStanding:connect(onPlatformStanding)
 Humanoid.Swimming:connect(onSwimming)
+
+spawn(function()
+	for i,v in script:GetChildren() do
+		for i2, anim in v:GetChildren() do
+			if anim:IsA("Animation") then
+				spawn(function()
+					anim:GetPropertyChangedSignal("AnimationId"):Connect(function()
+						for _,animationTrack in Humanoid:GetPlayingAnimationTracks() do
+							animationTrack:Stop()
+						end
+						Humanoid:ChangeState(Enum.HumanoidStateType.Landed)
+					end)
+				end)
+			end
+		end
+	end
+end)
+
 
 ---- setup emote chat hook
 game:GetService("Players").LocalPlayer.Chatted:connect(function(msg)
@@ -552,6 +598,12 @@ game:GetService("Players").LocalPlayer.Chatted:connect(function(msg)
 	end
 
 end)
+for _, instance in script:GetDescendants() do
+	if not instance:IsA("Animation") then continue end
+	instance:GetPropertyChangedSignal("AnimationId"):Connect(function()
+		Humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+	end)
+end
 
 -- emote bindable hook
 script:WaitForChild("PlayEmote").OnInvoke = function(emote)
