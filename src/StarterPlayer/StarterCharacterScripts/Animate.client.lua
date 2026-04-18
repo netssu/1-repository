@@ -1,635 +1,817 @@
--- humanoidAnimatePlayEmote.lua
+--// LocalScript: AnimationController.client.luau (COMPLETO + SPEEDLINES NO RUN)
+--!strict
 
-local Figure = script.Parent
-local Torso = Figure:WaitForChild("Torso")
-local RightShoulder = Torso:WaitForChild("Right Shoulder")
-local LeftShoulder = Torso:WaitForChild("Left Shoulder")
-local RightHip = Torso:WaitForChild("Right Hip")
-local LeftHip = Torso:WaitForChild("Left Hip")
-local Neck = Torso:WaitForChild("Neck")
-local Humanoid = Figure:WaitForChild("Humanoid")
-local pose = "Standing"
+local REPLICATED_STORAGE: ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PLAYERS: Players = game:GetService("Players")
+local RUN_SERVICE: RunService = game:GetService("RunService")
+local COLLECTION_SERVICE: CollectionService = game:GetService("CollectionService")
 
-local EMOTE_TRANSITION_TIME = 0.1
+local BALL_STATE_FOLDER_NAME: string = "FTGameState"
+local BALL_CARRIER_VALUE_NAME: string = "BallCarrier"
+local WALK_SPEED_PROPERTY_NAME: string = "WalkSpeed"
+local VALUE_PROPERTY_NAME: string = "Value"
 
-local userAnimateScaleRunSuccess, userAnimateScaleRunValue = pcall(function() return UserSettings():IsUserFeatureEnabled("UserAnimateScaleRun") end)
-local userAnimateScaleRun = userAnimateScaleRunSuccess and userAnimateScaleRunValue
+local TRACK_IDLE: string = "idle"
+local TRACK_WALK: string = "walk"
+local TRACK_RUN: string = "run"
+local TRACK_WALK_BALL: string = "walkBall"
+local TRACK_RUN_BALL: string = "runBall"
+local TRACK_JUMP: string = "jump"
+local TRACK_FALL: string = "fall"
+local TRACK_SIT: string = "sit"
+local TRACK_CLIMB: string = "climb"
 
-local function getRigScale()
-	if userAnimateScaleRun then
-		return Figure:GetScale()
-	else
-		return 1
-	end
-end
+local FADE_IN_MOVE: number = 0.12
+local FADE_OUT_MOVE: number = 0.14
+local FADE_IN_IDLE: number = 0.15
+local FADE_OUT_IDLE: number = 0.14
 
-local currentAnim = ""
-local currentAnimInstance = nil
-local currentAnimTrack = nil
-local currentAnimKeyframeHandler = nil
-local currentAnimSpeed = 1.0
-local animTable = {}
-local animNames = { 
-	idle = 	{	
-		{ id = "rbxassetid://96598801320438", weight = 10 }
-	},
-	walk = 	{ 	
-		{ id = "rbxassetid://93085828181864", weight = 10 } 
-	}, 
-	run = 	{
-		{ id = "rbxassetid://125450043620312", weight = 10 } 
-	}, 
-	runOnKeybind = 	{
-		{ id = "rbxassetid://125450043620312", weight = 10 } 
-	}, 
-	jump = 	{
-		{ id = "http://www.roblox.com/asset/?id=125750702", weight = 10 } 
-	}, 
-	fall = 	{
-		{ id = "http://www.roblox.com/asset/?id=180436148", weight = 10 } 
-	}, 
-	climb = {
-		{ id = "http://www.roblox.com/asset/?id=180436334", weight = 10 } 
-	}, 
-	sit = 	{
-		{ id = "http://www.roblox.com/asset/?id=178130996", weight = 10 } 
-	},	
-	toolnone = {
-		{ id = "http://www.roblox.com/asset/?id=182393478", weight = 10 } 
-	},
-	toolslash = {
-		{ id = "http://www.roblox.com/asset/?id=129967390", weight = 10 } 
-		--				{ id = "slash.xml", weight = 10 } 
-	},
-	toollunge = {
-		{ id = "http://www.roblox.com/asset/?id=129967478", weight = 10 } 
-	},
-	wave = {
-		{ id = "http://www.roblox.com/asset/?id=128777973", weight = 10 } 
-	},
-	point = {
-		{ id = "http://www.roblox.com/asset/?id=128853357", weight = 10 } 
-	},
-	dance1 = {
-		{ id = "http://www.roblox.com/asset/?id=182435998", weight = 10 }, 
-		{ id = "http://www.roblox.com/asset/?id=182491037", weight = 10 }, 
-		{ id = "http://www.roblox.com/asset/?id=182491065", weight = 10 } 
-	},
-	dance2 = {
-		{ id = "http://www.roblox.com/asset/?id=182436842", weight = 10 }, 
-		{ id = "http://www.roblox.com/asset/?id=182491248", weight = 10 }, 
-		{ id = "http://www.roblox.com/asset/?id=182491277", weight = 10 } 
-	},
-	dance3 = {
-		{ id = "http://www.roblox.com/asset/?id=182436935", weight = 10 }, 
-		{ id = "http://www.roblox.com/asset/?id=182491368", weight = 10 }, 
-		{ id = "http://www.roblox.com/asset/?id=182491423", weight = 10 } 
-	},
-	laugh = {
-		{ id = "http://www.roblox.com/asset/?id=129423131", weight = 10 } 
-	},
-	cheer = {
-		{ id = "http://www.roblox.com/asset/?id=129423030", weight = 10 } 
-	},
+local FADE_IN_AIR: number = 0.06
+local FADE_OUT_JUMP_TO_FALL: number = 0.10
+local FADE_IN_FALL: number = 0.10
+local FADE_OUT_FALL_LAND: number = 0.28
+
+local STOP_DEADZONE: number = 0.8
+local INPUT_DEADZONE: number = 0.05
+local RUN_THRESHOLD_WALKSPEED: number = 24
+
+local HEARTBEAT_FIX_ENABLED: boolean = true
+local HEARTBEAT_RATE: number = 0.10
+
+local BALL_CARRIER_DEFER_1: number = 0.05
+local BALL_CARRIER_DEFER_2: number = 0.10
+
+local AIR_ANIM_SPEED_MULT: number = 0.25
+local JUMP_MIN_TIME: number = 0.16
+local AIR_SEQUENCE_MIN_TIME: number = 0.22
+local LANDED_STABILITY_DELAY: number = 0.06
+
+local HARD_BLOCK_FOREIGN_FALL_ID: string = "rbxassetid://135853112500287"
+local DEFAULT_WALKSPEED_FALLBACK: number = 16
+
+type SpeedLinesModule = {
+	Play: (Humanoid, any?) -> (),
+	Stop: () -> (),
 }
-local dances = {"dance1", "dance2", "dance3"}
 
--- Existance in this list signifies that it is an emote, the value indicates if it is a looping emote
-local emoteNames = { wave = false, point = false, dance1 = true, dance2 = true, dance3 = true, laugh = false, cheer = false}
+local Assets: Folder = REPLICATED_STORAGE:WaitForChild("Assets") :: Folder
+local Gameplay: Folder = Assets:WaitForChild("Gameplay") :: Folder
+local Animations: Folder = Gameplay:WaitForChild("Animations") :: Folder
 
-function configureAnimationSet(name, fileList)
-	if (animTable[name] ~= nil) then
-		for _, connection in animTable[name].connections do
-			connection:disconnect()
-		end
+local Controllers: Instance? = REPLICATED_STORAGE:FindFirstChild("Controllers")
+local SpeedLinesController: SpeedLinesModule? = require(Controllers:FindFirstChild("SpeedLinesController"))
+local LocalPlayer: Player = PLAYERS.LocalPlayer
+local AnimationClone: Animation = Instance.new("Animation")
+
+local _Anims: {[string]: AnimationTrack} = {}
+local _OwnedTracks: {[AnimationTrack]: boolean} = {}
+
+local _BallCarrierInstance: ObjectValue? = nil
+
+local _Character: Model? = nil
+local _Humanoid: Humanoid? = nil
+local _Animator: Animator? = nil
+
+local _InAir: boolean = false
+local _InClimb: boolean = false
+local _InSeat: boolean = false
+local _CurrentMove: string? = nil
+
+local _AirSequenceActive: boolean = false
+local _AirPhase: string? = nil
+local _AirStartedAt: number = 0
+local _JumpStartedAt: number = 0
+local _AirStopNonce: number = 0
+
+local _HeartbeatAccumulator: number = 0
+local _CachedWalkSpeed: number = DEFAULT_WALKSPEED_FALLBACK
+
+local _SpeedLinesActive: boolean = false
+local _SpeedLinesHumanoid: Humanoid? = nil
+
+local _RunningConn: RBXScriptConnection? = nil
+local _StateConn: RBXScriptConnection? = nil
+local _HumanoidChangedConn: RBXScriptConnection? = nil
+local _BallCarrierConn: RBXScriptConnection? = nil
+local _HeartbeatConn: RBXScriptConnection? = nil
+local _AnimPlayedConn: RBXScriptConnection? = nil
+
+local MOVEMENT_TRACKS: {[string]: boolean} = {
+	[TRACK_IDLE] = true,
+	[TRACK_WALK] = true,
+	[TRACK_RUN] = true,
+	[TRACK_WALK_BALL] = true,
+	[TRACK_RUN_BALL] = true,
+}
+
+local function _StopSpeedLines()
+	if not _SpeedLinesActive then
+		return
 	end
-	animTable[name] = {}
-	animTable[name].count = 0
-	animTable[name].totalWeight = 0	
-	animTable[name].connections = {}
+	if SpeedLinesController ~= nil then
+		SpeedLinesController.Stop()
+	end
+	_SpeedLinesActive = false
+	_SpeedLinesHumanoid = nil
+end
 
-	-- check for config values
-	local config = script:FindFirstChild(name)
-	if (config ~= nil) then
-		--		print("Loading anims " .. name)
-		table.insert(animTable[name].connections, config.ChildAdded:connect(function(child) configureAnimationSet(name, fileList) end))
-		table.insert(animTable[name].connections, config.ChildRemoved:connect(function(child) configureAnimationSet(name, fileList) end))
-		local idx = 1
-		for _, childPart in config:GetChildren() do
-			if (childPart:IsA("Animation")) then
-				table.insert(animTable[name].connections, childPart.Changed:connect(function(property) configureAnimationSet(name, fileList) end))
-				animTable[name][idx] = {}
-				animTable[name][idx].anim = childPart
-				local weightObject = childPart:FindFirstChild("Weight")
-				if (weightObject == nil) then
-					animTable[name][idx].weight = 1
-				else
-					animTable[name][idx].weight = weightObject.Value
-				end
-				animTable[name].count = animTable[name].count + 1
-				animTable[name].totalWeight = animTable[name].totalWeight + animTable[name][idx].weight
-				--			print(name .. " [" .. idx .. "] " .. animTable[name][idx].anim.AnimationId .. " (" .. animTable[name][idx].weight .. ")")
-				idx = idx + 1
+local function _UpdateSpeedLinesForMove(MoveName: string)
+	if SpeedLinesController == nil then
+		return
+	end
+
+	local Humanoid: Humanoid? = _Humanoid
+	local shouldRunFx: boolean = (MoveName == TRACK_RUN) or (MoveName == TRACK_RUN_BALL)
+
+	if not shouldRunFx then
+		_StopSpeedLines()
+		return
+	end
+
+	if Humanoid == nil then
+		_StopSpeedLines()
+		return
+	end
+
+	if (not _SpeedLinesActive) or (_SpeedLinesHumanoid ~= Humanoid) then
+		SpeedLinesController.Stop()
+		SpeedLinesController.Play(Humanoid)
+		_SpeedLinesActive = true
+		_SpeedLinesHumanoid = Humanoid
+	end
+end
+
+local function _GetReferenceWalkSpeed(): number
+	local Humanoid: Humanoid? = _Humanoid
+	if Humanoid == nil then
+		return _CachedWalkSpeed
+	end
+
+	local ws: number = Humanoid.WalkSpeed
+	if ws > 0 then
+		_CachedWalkSpeed = ws
+		return ws
+	end
+
+	return _CachedWalkSpeed
+end
+
+local function _IsOnGround(): boolean
+	local Humanoid: Humanoid? = _Humanoid
+	if Humanoid == nil then
+		return true
+	end
+
+	if Humanoid.FloorMaterial == Enum.Material.Air then
+		return false
+	end
+
+	local state: Enum.HumanoidStateType = Humanoid:GetState()
+	if state == Enum.HumanoidStateType.Jumping
+		or state == Enum.HumanoidStateType.Freefall
+		or state == Enum.HumanoidStateType.FallingDown then
+		return false
+	end
+
+	return true
+end
+
+local function _RefreshAirFlag()
+	local Humanoid: Humanoid? = _Humanoid
+	if Humanoid == nil then
+		_InAir = false
+		return
+	end
+	_InAir = not _IsOnGround()
+end
+
+local function _GetRealSpeed(): number
+	local Humanoid: Humanoid? = _Humanoid
+	if Humanoid == nil then
+		return 0
+	end
+	local vel: Vector3 = Humanoid:GetMoveVelocity()
+	return Vector3.new(vel.X, 0, vel.Z).Magnitude
+end
+
+local function _IsMovingInput(): boolean
+	local Humanoid: Humanoid? = _Humanoid
+	if Humanoid == nil then
+		return false
+	end
+	return Humanoid.MoveDirection.Magnitude > INPUT_DEADZONE
+end
+
+local function _IsRunningMode(): boolean
+	return _GetReferenceWalkSpeed() >= RUN_THRESHOLD_WALKSPEED
+end
+
+local function _GetBallCarrierObject(): ObjectValue?
+	if _BallCarrierInstance ~= nil and _BallCarrierInstance.Parent ~= nil then
+		return _BallCarrierInstance
+	end
+
+	local StateFolder: Instance? = REPLICATED_STORAGE:FindFirstChild(BALL_STATE_FOLDER_NAME)
+	if StateFolder == nil then
+		return nil
+	end
+
+	local CarrierValue: Instance? = StateFolder:FindFirstChild(BALL_CARRIER_VALUE_NAME)
+	if CarrierValue == nil then
+		return nil
+	end
+
+	if not CarrierValue:IsA("ObjectValue") then
+		return nil
+	end
+
+	_BallCarrierInstance = CarrierValue
+	return CarrierValue
+end
+
+local function _IsCarryingBallFromState(Character: Model): boolean
+	local CarrierObject: ObjectValue? = _GetBallCarrierObject()
+	if CarrierObject == nil then
+		return false
+	end
+
+	local Value: any = CarrierObject.Value
+	if Value == nil or typeof(Value) ~= "Instance" then
+		return false
+	end
+
+	if Value:IsA("Player") then
+		return Value == LocalPlayer
+	end
+
+	if Value:IsA("Model") then
+		return Value == Character
+	end
+
+	if Value:IsA("Humanoid") then
+		return Value.Parent == Character
+	end
+
+	if Value:IsA("BasePart") then
+		return Value:IsDescendantOf(Character)
+	end
+
+	return false
+end
+
+local function _IsCarryingBallLocalFallback(Character: Model): boolean
+	if Character:GetAttribute("CarryingBall") == true then
+		return true
+	end
+
+	for _, child: Instance in ipairs(Character:GetChildren()) do
+		local lower: string = string.lower(child.Name)
+		if string.find(lower, "ball") ~= nil then
+			if child:IsA("Tool") or child:IsA("BasePart") or child:IsA("Model") then
+				return true
 			end
 		end
 	end
 
-	-- fallback to defaults
-	if (animTable[name].count <= 0) then
-		for idx, anim in fileList do
-			animTable[name][idx] = {}
-			animTable[name][idx].anim = Instance.new("Animation")
-			animTable[name][idx].anim.Name = name
-			animTable[name][idx].anim.AnimationId = anim.id
-			animTable[name][idx].weight = anim.weight
-			animTable[name].count = animTable[name].count + 1
-			animTable[name].totalWeight = animTable[name].totalWeight + anim.weight
-			--			print(name .. " [" .. idx .. "] " .. anim.id .. " (" .. anim.weight .. ")")
+	for _, d: Instance in ipairs(Character:GetDescendants()) do
+		if COLLECTION_SERVICE:HasTag(d, "Ball") then
+			return true
 		end
 	end
+
+	return false
 end
 
--- Setup animation objects
-function scriptChildModified(child)
-	local fileList = animNames[child.Name]
-	if (fileList ~= nil) then
-		configureAnimationSet(child.Name, fileList)
-	end	
+local function _IsCarryingBall(): boolean
+	local Character: Model? = _Character
+	if Character == nil then
+		return false
+	end
+
+	if _IsCarryingBallFromState(Character) then
+		return true
+	end
+
+	return _IsCarryingBallLocalFallback(Character)
 end
 
-script.ChildAdded:connect(scriptChildModified)
-script.ChildRemoved:connect(scriptChildModified)
-
--- Clear any existing animation tracks
--- Fixes issue with characters that are moved in and out of the Workspace accumulating tracks
-local animator = if Humanoid then Humanoid:FindFirstChildOfClass("Animator") else nil
-if animator then
-	local animTracks = animator:GetPlayingAnimationTracks()
-	for i,track in animTracks do
-		track:Stop(0)
-		track:Destroy()
+local function _GetExpectedMove(HasBall: boolean): string
+	if _IsRunningMode() then
+		return HasBall and TRACK_RUN_BALL or TRACK_RUN
 	end
+	return HasBall and TRACK_WALK_BALL or TRACK_WALK
 end
 
-
-for name, fileList in animNames do 
-	configureAnimationSet(name, fileList)
-end	
-
--- ANIMATION
-
--- declarations
-local toolAnim = "None"
-local toolAnimTime = 0
-
-local jumpAnimTime = 0
-local jumpAnimDuration = 0.3
-
-local toolTransitionTime = 0.1
-local fallTransitionTime = 0.3
-local jumpMaxLimbVelocity = 0.75
-
--- functions
-
-function stopAllAnimations()
-	local oldAnim = currentAnim
-
-	-- return to idle if finishing an emote
-	if (emoteNames[oldAnim] ~= nil and emoteNames[oldAnim] == false) then
-		oldAnim = "idle"
+local function _StopTrack(Name: string, Fade: number)
+	local Track: AnimationTrack? = _Anims[Name]
+	if Track == nil then
+		return
 	end
-
-	currentAnim = ""
-	currentAnimInstance = nil
-	if (currentAnimKeyframeHandler ~= nil) then
-		currentAnimKeyframeHandler:disconnect()
+	if not Track.IsPlaying then
+		return
 	end
-
-	if (currentAnimTrack ~= nil) then
-		currentAnimTrack:Stop()
-		currentAnimTrack:Destroy()
-		currentAnimTrack = nil
-	end
-	return oldAnim
+	Track:Stop(Fade)
 end
 
-function setAnimationSpeed(speed)
-	if speed ~= currentAnimSpeed then
-		currentAnimSpeed = speed
-		currentAnimTrack:AdjustSpeed(currentAnimSpeed)
-	end
-end
-
-function keyFrameReachedFunc(frameName)
-	if (frameName == "End") then
-
-		local repeatAnim = currentAnim
-		-- return to idle if finishing an emote
-		if (emoteNames[repeatAnim] ~= nil and emoteNames[repeatAnim] == false) then
-			repeatAnim = "idle"
-		end
-
-		local animSpeed = currentAnimSpeed
-		playAnimation(repeatAnim, 0.0, Humanoid)
-		setAnimationSpeed(animSpeed)
-	end
-end
-
--- Preload animations
-function playAnimation(animName, transitionTime, humanoid) 
-
-	local roll = math.random(1, animTable[animName].totalWeight) 
-	local origRoll = roll
-	local idx = 1
-	while (roll > animTable[animName][idx].weight) do
-		roll = roll - animTable[animName][idx].weight
-		idx = idx + 1
-	end
-	--		print(animName .. " " .. idx .. " [" .. origRoll .. "]")
-	local anim = animTable[animName][idx].anim
-
-	-- switch animation		
-	if (anim ~= currentAnimInstance) then
-
-		if (currentAnimTrack ~= nil) then
-			currentAnimTrack:Stop(transitionTime)
-			currentAnimTrack:Destroy()
-		end
-
-		currentAnimSpeed = 1.0
-
-		-- load it to the humanoid; get AnimationTrack
-		currentAnimTrack = humanoid:LoadAnimation(anim)
-		currentAnimTrack.Priority = Enum.AnimationPriority.Core
-
-		-- play the animation
-		currentAnimTrack:Play(transitionTime)
-		if animName == "walk" then
-			currentAnimTrack:AdjustSpeed(1)
-		end
-		currentAnim = animName
-		currentAnimInstance = anim
-		-- set up keyframe name triggers
-		if (currentAnimKeyframeHandler ~= nil) then
-			currentAnimKeyframeHandler:disconnect()
-		end
-		currentAnimKeyframeHandler = currentAnimTrack.KeyframeReached:connect(keyFrameReachedFunc)
-
+local function _PlayTrack(Name: string, FadeIn: number, Weight: number, Speed: number)
+	local Track: AnimationTrack? = _Anims[Name]
+	if Track == nil then
+		return
 	end
 
-end
-
--------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------
-
-local toolAnimName = ""
-local toolAnimTrack = nil
-local toolAnimInstance = nil
-local currentToolAnimKeyframeHandler = nil
-
-function toolKeyFrameReachedFunc(frameName)
-	if (frameName == "End") then
-		--		print("Keyframe : ".. frameName)	
-		playToolAnimation(toolAnimName, 0.0, Humanoid)
-	end
-end
-
-
-function playToolAnimation(animName, transitionTime, humanoid, priority)	 
-
-	local roll = math.random(1, animTable[animName].totalWeight) 
-	local origRoll = roll
-	local idx = 1
-	while (roll > animTable[animName][idx].weight) do
-		roll = roll - animTable[animName][idx].weight
-		idx = idx + 1
-	end
-	--		print(animName .. " * " .. idx .. " [" .. origRoll .. "]")
-	local anim = animTable[animName][idx].anim
-
-	if (toolAnimInstance ~= anim) then
-
-		if (toolAnimTrack ~= nil) then
-			toolAnimTrack:Stop()
-			toolAnimTrack:Destroy()
-			transitionTime = 0
-		end
-
-		-- load it to the humanoid; get AnimationTrack
-		toolAnimTrack = humanoid:LoadAnimation(anim)
-		if priority then
-			toolAnimTrack.Priority = priority
-		end
-
-		-- play the animation
-		toolAnimTrack:Play(transitionTime)
-		toolAnimName = animName
-		toolAnimInstance = anim
-
-		currentToolAnimKeyframeHandler = toolAnimTrack.KeyframeReached:connect(toolKeyFrameReachedFunc)
-	end
-end
-
-function stopToolAnimations()
-	local oldAnim = toolAnimName
-
-	if (currentToolAnimKeyframeHandler ~= nil) then
-		currentToolAnimKeyframeHandler:disconnect()
-	end
-
-	toolAnimName = ""
-	toolAnimInstance = nil
-	if (toolAnimTrack ~= nil) then
-		toolAnimTrack:Stop()
-		toolAnimTrack:Destroy()
-		toolAnimTrack = nil
-	end
-
-
-	return oldAnim
-end
-
--------------------------------------------------------------------------------------------
--------------------------------------------------------------------------------------------
-
-
---function onRunning(speed)
---	speed /= getRigScale()
-
---	if speed > 0.01 then
---		playAnimation("walk", 0.1, Humanoid)
---		if currentAnimInstance and currentAnimInstance.AnimationId == "http://www.roblox.com/asset/?id=180426354" then
---			setAnimationSpeed(speed / 14.5)
---		end
---		pose = "Running"
---	else
---		if emoteNames[currentAnim] == nil then
---			playAnimation("idle", 0.1, Humanoid)
---			pose = "Standing"
---		end
---	end
---end
-
-function onRunning(speed)	
-	if speed > 0.75 and Humanoid.WalkSpeed <= 16 then
-		local scale = Humanoid.WalkSpeed -- 16.0
-		playAnimation("walk", 0.2, Humanoid)
-		--setAnimationSpeed(speed / scale)
-		pose = "Running"
-	elseif speed > 0.75 and Humanoid.WalkSpeed > 16 then
-		local scale = Humanoid.WalkSpeed -- 16.0
-		--playAnimation("runOnKeybind", 0.5, Humanoid)
-		playAnimation("run", 0.5, Humanoid)
-		setAnimationSpeed(speed / scale)
-		pose = "Running"
+	if not Track.IsPlaying then
+		Track:Play(FadeIn, Weight, Speed)
 	else
-		if emoteNames[currentAnim] == nil then
-			playAnimation("idle", 0.2, Humanoid)
-			pose = "Standing"
-		end
+		Track:AdjustSpeed(Speed)
 	end
 end
 
-function onDied()
-	pose = "Dead"
-end
-
-function onJumping()
-	playAnimation("jump", 0.1, Humanoid)
-	jumpAnimTime = jumpAnimDuration
-	pose = "Jumping"
-end
-
-function onClimbing(speed)
-	speed /= getRigScale()
-
-	playAnimation("climb", 0.1, Humanoid)
-	setAnimationSpeed(speed / 12.0)
-	pose = "Climbing"
-end
-
-function onGettingUp()
-	pose = "GettingUp"
-end
-
-function onFreeFall()
-	if (jumpAnimTime <= 0) then
-		playAnimation("fall", fallTransitionTime, Humanoid)
-	end
-	pose = "FreeFall"
-end
-
-function onFallingDown()
-	pose = "FallingDown"
-end
-
-function onSeated()
-	pose = "Seated"
-end
-
-function onPlatformStanding()
-	pose = "PlatformStanding"
-end
-
-function onSwimming(speed)
-	if speed > 0 then
-		pose = "Running"
-	else
-		pose = "Standing"
+local function _StopAllMovementInstant()
+	for n: string, _ in pairs(MOVEMENT_TRACKS) do
+		_StopTrack(n, 0)
 	end
 end
 
-function getTool()	
-	for _, kid in Figure:GetChildren() do
-		if kid.className == "Tool" then return kid end
-	end
-	return nil
-end
-
-function getToolAnim(tool)
-	for _, c in tool:GetChildren() do
-		if c.Name == "toolanim" and c.className == "StringValue" then
-			return c
-		end
-	end
-	return nil
-end
-
-function animateTool()
-
-	if (toolAnim == "None") then
-		playToolAnimation("toolnone", toolTransitionTime, Humanoid, Enum.AnimationPriority.Idle)
+local function _SetMove(Name: string, SpeedScale: number)
+	if _CurrentMove == Name then
+		_PlayTrack(Name, 0, 1, SpeedScale)
+		_UpdateSpeedLinesForMove(Name)
 		return
 	end
 
-	if (toolAnim == "Slash") then
-		playToolAnimation("toolslash", 0, Humanoid, Enum.AnimationPriority.Action)
+	for Other: string, _ in pairs(MOVEMENT_TRACKS) do
+		if Other ~= Name then
+			_StopTrack(Other, Other == TRACK_IDLE and FADE_OUT_IDLE or FADE_OUT_MOVE)
+		end
+	end
+
+	_PlayTrack(Name, Name == TRACK_IDLE and FADE_IN_IDLE or FADE_IN_MOVE, 1, SpeedScale)
+	_CurrentMove = Name
+	_UpdateSpeedLinesForMove(Name)
+end
+
+local function _BindAnimatorInterceptors()
+	local Animator: Animator? = _Animator
+	if Animator == nil then
 		return
 	end
 
-	if (toolAnim == "Lunge") then
-		playToolAnimation("toollunge", 0, Humanoid, Enum.AnimationPriority.Action)
-		return
-	end
-end
-
-function moveSit()
-	RightShoulder.MaxVelocity = 0.15
-	LeftShoulder.MaxVelocity = 0.15
-	RightShoulder:SetDesiredAngle(3.14 /2)
-	LeftShoulder:SetDesiredAngle(-3.14 /2)
-	RightHip:SetDesiredAngle(3.14 /2)
-	LeftHip:SetDesiredAngle(-3.14 /2)
-end
-
-local lastTick = 0
-
-function move(time)
-	local amplitude = 1
-	local frequency = 1
-	local deltaTime = time - lastTick
-	lastTick = time
-
-	local climbFudge = 0
-	local setAngles = false
-
-	if (jumpAnimTime > 0) then
-		jumpAnimTime = jumpAnimTime - deltaTime
+	if _AnimPlayedConn ~= nil then
+		_AnimPlayedConn:Disconnect()
+		_AnimPlayedConn = nil
 	end
 
-	if (pose == "FreeFall" and jumpAnimTime <= 0) then
-		playAnimation("fall", fallTransitionTime, Humanoid)
-	elseif (pose == "Seated") then
-		playAnimation("sit", 0.5, Humanoid)
-		return
-	elseif (pose == "Running") then
-		if Humanoid.WalkSpeed <= 16 then
-			playAnimation("walk", 0.2, Humanoid)
-		else
-			playAnimation("run", 0.5, Humanoid)
-		end
-	elseif (pose == "Dead" or pose == "GettingUp" or pose == "FallingDown" or pose == "Seated" or pose == "PlatformStanding") then
-		--		print("Wha " .. pose)
-		stopAllAnimations()
-		amplitude = 0.1
-		frequency = 1
-		setAngles = true
-	end
-
-	if (setAngles) then
-		local desiredAngle = amplitude * math.sin(time * frequency)
-
-		RightShoulder:SetDesiredAngle(desiredAngle + climbFudge)
-		LeftShoulder:SetDesiredAngle(desiredAngle - climbFudge)
-		RightHip:SetDesiredAngle(-desiredAngle)
-		LeftHip:SetDesiredAngle(-desiredAngle)
-	end
-
-	-- Tool Animation handling
-	local tool = getTool()
-	if tool and tool:FindFirstChild("Handle") then
-
-		local animStringValueObject = getToolAnim(tool)
-
-		if animStringValueObject then
-			toolAnim = animStringValueObject.Value
-			-- message recieved, delete StringValue
-			animStringValueObject.Parent = nil
-			toolAnimTime = time + .3
+	_AnimPlayedConn = Animator.AnimationPlayed:Connect(function(track: AnimationTrack)
+		if _OwnedTracks[track] == true then
+			return
 		end
 
-		if time > toolAnimTime then
-			toolAnimTime = 0
-			toolAnim = "None"
-		end
+		local nameLower: string = string.lower(track.Name)
+		local animId: string = ""
 
-		animateTool()		
-	else
-		stopToolAnimations()
-		toolAnim = "None"
-		toolAnimInstance = nil
-		toolAnimTime = 0
-	end
-end
-
--- connect events
-Humanoid.Died:connect(onDied)
-Humanoid.Running:connect(onRunning)
-Humanoid.Jumping:connect(onJumping)
-Humanoid.Climbing:connect(onClimbing)
-Humanoid.GettingUp:connect(onGettingUp)
-Humanoid.FreeFalling:connect(onFreeFall)
-Humanoid.FallingDown:connect(onFallingDown)
-Humanoid.Seated:connect(onSeated)
-Humanoid.PlatformStanding:connect(onPlatformStanding)
-Humanoid.Swimming:connect(onSwimming)
-
-spawn(function()
-	for i,v in script:GetChildren() do
-		for i2, anim in v:GetChildren() do
-			if anim:IsA("Animation") then
-				spawn(function()
-					anim:GetPropertyChangedSignal("AnimationId"):Connect(function()
-						for _,animationTrack in Humanoid:GetPlayingAnimationTracks() do
-							animationTrack:Stop()
-						end
-						Humanoid:ChangeState(Enum.HumanoidStateType.Landed)
-					end)
-				end)
+		pcall(function()
+			if track.Animation then
+				animId = track.Animation.AnimationId
 			end
+		end)
+
+		local isAirName: boolean =
+			(string.find(nameLower, "fall") ~= nil)
+			or (string.find(nameLower, "jump") ~= nil)
+			or (string.find(nameLower, "freefall") ~= nil)
+
+		local isHardBlocked: boolean = (animId == HARD_BLOCK_FOREIGN_FALL_ID)
+
+		if isAirName or isHardBlocked then
+			pcall(function()
+				track:Stop(0)
+			end)
 		end
-	end
-end)
-
-
----- setup emote chat hook
-game:GetService("Players").LocalPlayer.Chatted:connect(function(msg)
-	local emote = ""
-	if msg == "/e dance" then
-		emote = dances[math.random(1, #dances)]
-	elseif (string.sub(msg, 1, 3) == "/e ") then
-		emote = string.sub(msg, 4)
-	elseif (string.sub(msg, 1, 7) == "/emote ") then
-		emote = string.sub(msg, 8)
-	end
-
-	if (pose == "Standing" and emoteNames[emote] ~= nil) then
-		playAnimation(emote, 0.1, Humanoid)
-	end
-
-end)
-for _, instance in script:GetDescendants() do
-	if not instance:IsA("Animation") then continue end
-	instance:GetPropertyChangedSignal("AnimationId"):Connect(function()
-		Humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 	end)
 end
 
--- emote bindable hook
-script:WaitForChild("PlayEmote").OnInvoke = function(emote)
-	-- Only play emotes when idling
-	if pose ~= "Standing" then
+local function _AddAnimation(Name: string, AnimationObject: Animation, Priority: Enum.AnimationPriority, Looped: boolean)
+	local Humanoid: Humanoid? = _Humanoid
+	if Humanoid == nil then
 		return
 	end
-	if emoteNames[emote] ~= nil then
-		-- Default emotes
-		playAnimation(emote, EMOTE_TRANSITION_TIME, Humanoid)
 
-		return true, currentAnimTrack
+	local Animator: Animator? = _Animator
+	if Animator == nil then
+		local Created: Animator = Instance.new("Animator")
+		Created.Parent = Humanoid
+		_Animator = Created
+		Animator = Created
 	end
 
-	-- Return false to indicate that the emote could not be played
+	local Anim: Animation = AnimationClone:Clone()
+	Anim.AnimationId = AnimationObject.AnimationId
+
+	local Track: AnimationTrack = Animator:LoadAnimation(Anim)
+	Track.Name = Name
+	Track.Priority = Priority
+	Track.Looped = Looped
+
+	_Anims[Name] = Track
+	_OwnedTracks[Track] = true
+end
+
+local function _ShouldUseAirSequence(): boolean
+	if not _IsRunningMode() then
+		return true
+	end
+	if not _IsMovingInput() then
+		return true
+	end
+	if _GetRealSpeed() <= STOP_DEADZONE then
+		return true
+	end
 	return false
 end
--- main program
 
--- initialize to idle
-playAnimation("idle", 0.1, Humanoid)
-pose = "Standing"
+local function _StartAirSequence()
+	_AirSequenceActive = true
+	_AirPhase = "Jump"
+	_AirStartedAt = os.clock()
+	_JumpStartedAt = os.clock()
+	_AirStopNonce += 1
 
-while Figure.Parent ~= nil do
-	local _, time = wait(0.1)
-	move(time)
+	_CurrentMove = nil
+	_StopAllMovementInstant()
+	_StopTrack(TRACK_FALL, 0)
+	_StopSpeedLines()
+
+	local jumpTrack: AnimationTrack? = _Anims[TRACK_JUMP]
+	if jumpTrack then
+		jumpTrack.Looped = false
+	end
+
+	_PlayTrack(TRACK_JUMP, FADE_IN_AIR, 1, 1)
 end
 
+local function _TryTransitionJumpToFall()
+	if not _AirSequenceActive or _AirPhase ~= "Jump" then
+		return
+	end
 
+	local nonce: number = _AirStopNonce
+	local elapsedJump: number = os.clock() - _JumpStartedAt
+	local waitMin: number = math.max(0, JUMP_MIN_TIME - elapsedJump)
+
+	task.delay(waitMin, function()
+		if nonce ~= _AirStopNonce then
+			return
+		end
+		if not _AirSequenceActive or _AirPhase ~= "Jump" then
+			return
+		end
+
+		_AirPhase = "Fall"
+		_StopTrack(TRACK_JUMP, FADE_OUT_JUMP_TO_FALL)
+
+		local fallTrack: AnimationTrack? = _Anims[TRACK_FALL]
+		if fallTrack then
+			fallTrack.Looped = true
+		end
+
+		_PlayTrack(TRACK_FALL, FADE_IN_FALL, 1, 1)
+	end)
+end
+
+local _UpdateMovement: (() -> ())? = nil
+
+local function _StopAirSequenceSmoothOnLand()
+	_AirStopNonce += 1
+	local nonce: number = _AirStopNonce
+
+	local elapsedTotal: number = os.clock() - _AirStartedAt
+	local waitMin: number = math.max(0, AIR_SEQUENCE_MIN_TIME - elapsedTotal)
+
+	task.delay(waitMin, function()
+		if nonce ~= _AirStopNonce then
+			return
+		end
+		if not _AirSequenceActive then
+			return
+		end
+
+		task.delay(LANDED_STABILITY_DELAY, function()
+			if nonce ~= _AirStopNonce then
+				return
+			end
+			if not _AirSequenceActive then
+				return
+			end
+
+			local Humanoid: Humanoid? = _Humanoid
+			if Humanoid == nil then
+				return
+			end
+
+			local state: Enum.HumanoidStateType = Humanoid:GetState()
+			local onGround: boolean = (Humanoid.FloorMaterial ~= Enum.Material.Air)
+
+			if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall or not onGround then
+				return
+			end
+
+			_AirSequenceActive = false
+			_AirPhase = nil
+
+			_StopTrack(TRACK_JUMP, 0)
+			_StopTrack(TRACK_FALL, FADE_OUT_FALL_LAND)
+
+			_CurrentMove = nil
+			if _UpdateMovement then
+				task.defer(_UpdateMovement)
+			end
+		end)
+	end)
+end
+
+local function _UpdateMovementImpl()
+	if _InClimb or _InSeat then
+		return
+	end
+
+	local Humanoid: Humanoid? = _Humanoid
+	if Humanoid == nil then
+		return
+	end
+
+	if _AirSequenceActive then
+		return
+	end
+
+	_RefreshAirFlag()
+
+	local movingInput: boolean = _IsMovingInput()
+	local speed: number = _GetRealSpeed()
+
+	if (not movingInput) or speed <= STOP_DEADZONE then
+		_SetMove(TRACK_IDLE, 1)
+		return
+	end
+
+	local hasBall: boolean = _IsCarryingBall()
+	local refWalkSpeed: number = _GetReferenceWalkSpeed()
+
+	local speedScale: number = 1
+	if refWalkSpeed > 0 then
+		speedScale = math.clamp(speed / refWalkSpeed, 0.75, 1.35)
+	end
+
+	if _InAir then
+		speedScale *= AIR_ANIM_SPEED_MULT
+	end
+
+	local expected: string = _GetExpectedMove(hasBall)
+	_SetMove(expected, speedScale)
+end
+
+_UpdateMovement = _UpdateMovementImpl
+
+local function _EnterClimb()
+	_InClimb = true
+	_InSeat = false
+	_InAir = false
+
+	_AirSequenceActive = false
+	_AirPhase = nil
+
+	_CurrentMove = nil
+	_StopAllMovementInstant()
+	_StopTrack(TRACK_JUMP, 0)
+	_StopTrack(TRACK_FALL, 0)
+	_StopSpeedLines()
+	_PlayTrack(TRACK_CLIMB, FADE_IN_MOVE, 1, 1)
+end
+
+local function _EnterSeat()
+	_InSeat = true
+	_InClimb = false
+	_InAir = false
+
+	_AirSequenceActive = false
+	_AirPhase = nil
+
+	_CurrentMove = nil
+	_StopAllMovementInstant()
+	_StopTrack(TRACK_JUMP, 0)
+	_StopTrack(TRACK_FALL, 0)
+	_StopSpeedLines()
+	_PlayTrack(TRACK_SIT, FADE_IN_IDLE, 1, 1)
+end
+
+local function _OnStateChanged(NewState: Enum.HumanoidStateType)
+	if NewState == Enum.HumanoidStateType.Climbing then
+		_EnterClimb()
+		return
+	end
+
+	if NewState == Enum.HumanoidStateType.Seated then
+		_EnterSeat()
+		return
+	end
+
+	if _InClimb and NewState ~= Enum.HumanoidStateType.Climbing then
+		_InClimb = false
+		_StopTrack(TRACK_CLIMB, FADE_OUT_MOVE)
+	end
+
+	if _InSeat and NewState ~= Enum.HumanoidStateType.Seated then
+		_InSeat = false
+		_StopTrack(TRACK_SIT, FADE_OUT_IDLE)
+	end
+
+	if NewState == Enum.HumanoidStateType.Jumping then
+		_InAir = true
+
+		if _ShouldUseAirSequence() then
+			_StartAirSequence()
+			return
+		end
+
+		_AirSequenceActive = false
+		_AirPhase = nil
+		_StopTrack(TRACK_JUMP, 0)
+		_StopTrack(TRACK_FALL, 0)
+		_StopSpeedLines()
+		_UpdateMovementImpl()
+		return
+	end
+
+	if NewState == Enum.HumanoidStateType.Freefall or NewState == Enum.HumanoidStateType.FallingDown then
+		_InAir = true
+
+		if _AirSequenceActive and _AirPhase == "Jump" then
+			_TryTransitionJumpToFall()
+			return
+		end
+
+		_UpdateMovementImpl()
+		return
+	end
+
+	if NewState == Enum.HumanoidStateType.Landed then
+		_InAir = false
+
+		if _AirSequenceActive then
+			_StopAirSequenceSmoothOnLand()
+			return
+		end
+
+		_CurrentMove = nil
+		_UpdateMovementImpl()
+		return
+	end
+
+	_RefreshAirFlag()
+end
+
+local function _OnRunning()
+	_UpdateMovementImpl()
+end
+
+local function _OnHumanoidChanged(PropertyName: string)
+	if PropertyName ~= WALK_SPEED_PROPERTY_NAME then
+		return
+	end
+
+	local Humanoid: Humanoid? = _Humanoid
+	if Humanoid ~= nil then
+		local ws: number = Humanoid.WalkSpeed
+		if ws > 0 then
+			_CachedWalkSpeed = ws
+		end
+	end
+
+	_UpdateMovementImpl()
+end
+
+local function _OnBallCarrierChanged(PropertyName: string)
+	if PropertyName ~= VALUE_PROPERTY_NAME then
+		return
+	end
+
+	_CurrentMove = nil
+	_UpdateMovementImpl()
+
+	task.defer(_UpdateMovementImpl)
+	task.delay(BALL_CARRIER_DEFER_1, _UpdateMovementImpl)
+	task.delay(BALL_CARRIER_DEFER_2, _UpdateMovementImpl)
+end
+
+local function _OnHeartbeat(dt: number)
+	if not HEARTBEAT_FIX_ENABLED then
+		return
+	end
+
+	_HeartbeatAccumulator += dt
+	if _HeartbeatAccumulator < HEARTBEAT_RATE then
+		return
+	end
+	_HeartbeatAccumulator = 0
+
+	_UpdateMovementImpl()
+end
+
+local function _DisconnectConnections()
+	if _RunningConn then _RunningConn:Disconnect(); _RunningConn = nil end
+	if _StateConn then _StateConn:Disconnect(); _StateConn = nil end
+	if _HumanoidChangedConn then _HumanoidChangedConn:Disconnect(); _HumanoidChangedConn = nil end
+	if _BallCarrierConn then _BallCarrierConn:Disconnect(); _BallCarrierConn = nil end
+	if _HeartbeatConn then _HeartbeatConn:Disconnect(); _HeartbeatConn = nil end
+	if _AnimPlayedConn then _AnimPlayedConn:Disconnect(); _AnimPlayedConn = nil end
+end
+
+local function _ClearOwnedTracks()
+	for n: string, tr: AnimationTrack in pairs(_Anims) do
+		pcall(function() tr:Stop(0) end)
+		pcall(function() tr:Destroy() end)
+		_Anims[n] = nil
+	end
+	table.clear(_OwnedTracks)
+end
+
+local function SetupCharacter(Character: Model)
+	_Character = Character
+	_Humanoid = Character:WaitForChild("Humanoid") :: Humanoid
+	_Animator = _Humanoid:FindFirstChildOfClass("Animator")
+
+	_CachedWalkSpeed = math.max((_Humanoid :: Humanoid).WalkSpeed, DEFAULT_WALKSPEED_FALLBACK)
+
+	local AnimateScript: Instance? = Character:FindFirstChild("Animate")
+	if AnimateScript ~= nil and AnimateScript ~= script then
+		if AnimateScript:IsA("LocalScript") or AnimateScript:IsA("Script") then
+			AnimateScript.Disabled = true
+		end
+	end
+
+	_DisconnectConnections()
+	_ClearOwnedTracks()
+	_StopSpeedLines()
+
+	_InAir = false
+	_InClimb = false
+	_InSeat = false
+	_CurrentMove = nil
+
+	_AirSequenceActive = false
+	_AirPhase = nil
+	_AirStartedAt = 0
+	_JumpStartedAt = 0
+	_AirStopNonce = 0
+
+	_HeartbeatAccumulator = 0
+
+	_AddAnimation(TRACK_IDLE, Animations:WaitForChild("Idle") :: Animation, Enum.AnimationPriority.Idle, true)
+	_AddAnimation(TRACK_WALK, Animations:WaitForChild("Walk") :: Animation, Enum.AnimationPriority.Movement, true)
+	_AddAnimation(TRACK_RUN, Animations:WaitForChild("Run") :: Animation, Enum.AnimationPriority.Movement, true)
+	_AddAnimation(TRACK_WALK_BALL, Animations:WaitForChild("WalkBall") :: Animation, Enum.AnimationPriority.Movement, true)
+	_AddAnimation(TRACK_RUN_BALL, Animations:WaitForChild("RunBall") :: Animation, Enum.AnimationPriority.Movement, true)
+
+	_AddAnimation(TRACK_JUMP, Animations:WaitForChild("Jump") :: Animation, Enum.AnimationPriority.Action, false)
+	_AddAnimation(TRACK_FALL, Animations:WaitForChild("Fall") :: Animation, Enum.AnimationPriority.Action, true)
+
+	_AddAnimation(TRACK_SIT, Animations:WaitForChild("Sit") :: Animation, Enum.AnimationPriority.Idle, true)
+	_AddAnimation(TRACK_CLIMB, Animations:WaitForChild("Climb") :: Animation, Enum.AnimationPriority.Movement, true)
+
+	_BindAnimatorInterceptors()
+
+	local Humanoid: Humanoid = _Humanoid :: Humanoid
+
+	_RunningConn = Humanoid.Running:Connect(function()
+		_OnRunning()
+	end)
+
+	_StateConn = Humanoid.StateChanged:Connect(function(_: Enum.HumanoidStateType, newState: Enum.HumanoidStateType)
+		_OnStateChanged(newState)
+	end)
+
+	_HumanoidChangedConn = Humanoid.Changed:Connect(function(prop: string)
+		_OnHumanoidChanged(prop)
+	end)
+
+	local carrier: ObjectValue? = _GetBallCarrierObject()
+	if carrier then
+		_BallCarrierConn = carrier.Changed:Connect(function(prop: string)
+			_OnBallCarrierChanged(prop)
+		end)
+	end
+
+	_HeartbeatConn = RUN_SERVICE.Heartbeat:Connect(function(dt: number)
+		_OnHeartbeat(dt)
+	end)
+
+	task.defer(_UpdateMovementImpl)
+end
+
+local ExistingCharacter: Model? = LocalPlayer.Character
+if ExistingCharacter ~= nil then
+	SetupCharacter(ExistingCharacter)
+end
+
+LocalPlayer.CharacterAdded:Connect(function(Character: Model)
+	SetupCharacter(Character)
+end)
