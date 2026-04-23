@@ -106,6 +106,18 @@ local function setModelPosition(model, customCFrame)
 	end
 end
 
+local function stripViewportSurfaceAppearance(model)
+	if not model then
+		return
+	end
+
+	for _, descendant in ipairs(model:GetDescendants()) do
+		if descendant:IsA("SurfaceAppearance") then
+			descendant:Destroy()
+		end
+	end
+end
+
 -- Batch UI element creation
 local function applyUIElements(viewport, shiny, customSize)
 	initializeCache()
@@ -165,6 +177,7 @@ module.CreateViewPort = function(Name, shiny, customSize, lowDetail)
 	WorldModel.Parent = ViewPort
 
 	local Model = ModelFolder[Name]:Clone()
+	stripViewportSurfaceAppearance(Model)
 	Model.Parent = WorldModel
 	
 	--if true then return Model end

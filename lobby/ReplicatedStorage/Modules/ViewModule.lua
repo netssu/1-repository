@@ -600,8 +600,6 @@ function ViewModule.Hatch(Info) --UnitInfo, PlayerUnit, _resumeCallback
 	local isFromSummon = Info[4]
 	local AutoSummon = Info[5]
 	
-	warn(Info)
-	
 	local GetUnitModel = require(game.ReplicatedStorage.Modules.GetUnitModel)
 	local Unit = if PlayerUnit:GetAttribute("Shiny") then GetUnitModel[PlayerUnit.Name] else GetUnitModel[PlayerUnit.Name]
 	local HatchUi : ScreenGui = script.HatchInfo:Clone() --Point to the ui here--Knit.Get("Module", "GuiUtil").GetUI("HatchInfo"):Clone()
@@ -1340,7 +1338,6 @@ function ViewModule.Hatch(Info) --UnitInfo, PlayerUnit, _resumeCallback
 				Input.KeyCode == Enum.KeyCode.ButtonX
 
 			if isClick then
-				print("OK")
 				debounce = true
 				continue()
 				task.delay(cooldown, function()
@@ -1545,8 +1542,6 @@ function ViewModule.Item(Info)
 	end
 	local GetItem = require(game.ReplicatedStorage.Modules.GetItemModel)
 	local amount = if TraitPointFromSummon then tostring(Info[4]) else tostring(Info[3])
-	warn(ItemInfo)
-	warn(GetItem[ItemInfo.Name])
 	local Item = GetItem[ItemInfo.Name]
 	local HatchUi : ScreenGui = script.HatchInfo:Clone() --Point to the ui here--Knit.Get("Module", "GuiUtil").GetUI("HatchInfo"):Clone()
 	local HatchCenter = HatchUi:WaitForChild("Center")

@@ -1158,7 +1158,7 @@ end)
 
 local summonCooldown = {}
 -- summonBannerEvent:InvokeServer
-summonBannerEvent.OnServerInvoke = function(player,quantity,HolocronSummon, isLucky)
+summonBannerEvent.OnServerInvoke = function(player,quantity,HolocronSummon, isLucky, selectedBannerIndex)
 	if isLucky and player.LuckySpins.Value == 0 then return "You do not have enough spins" end   
 
 	if #player.OwnedTowers:GetChildren()+quantity > player.MaxUnits.Value then
@@ -1171,6 +1171,7 @@ summonBannerEvent.OnServerInvoke = function(player,quantity,HolocronSummon, isLu
 		summonCooldown[player] = false
 	end)
 	local holocron = nil
+	selectedBannerIndex = math.clamp(tonumber(selectedBannerIndex) or 1, 1, 3)
 	if HolocronSummon then
 		if player.Items["Holocron Summon Cube"].Value > 0 then
 			holocron = true
@@ -1204,7 +1205,7 @@ summonBannerEvent.OnServerInvoke = function(player,quantity,HolocronSummon, isLu
 				player.LuckySpins.Value -= 1
 			end
 
-			local unit = ChanceModule.chooseRandomUnit(player, isLucky)
+			local unit = ChanceModule.chooseRandomUnit(player, isLucky, selectedBannerIndex)
 			--player.Quest.Daily.Summon.Progress.Value+=1
 			--unit = ReplicatedStorage.Upgrades.Mythical.Plooo
 

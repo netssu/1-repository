@@ -103,6 +103,69 @@ local function waitForUnitsVisibilityChanged()
 	unitsFrame:GetPropertyChangedSignal('Visible'):Wait()
 end
 
+local function findSummonFrame()
+	NewUI = NewUI or Gui:FindFirstChild("NewUI")
+
+	if NewUI and NewUI:FindFirstChild("Summons") then
+		return NewUI.Summons
+	end
+
+	local summonFolder = CoreGameGui:FindFirstChild("Summon")
+	return summonFolder and summonFolder:FindFirstChild("SummonFrame")
+end
+
+local function getSummonActionButtons()
+	local newSummons = findSummonFrame()
+	local buttons = {}
+
+	if newSummons and newSummons.Name == "Summons" then
+		local bannerButtons = newSummons:FindFirstChild("Body")
+			and newSummons.Body:FindFirstChild("Main")
+			and newSummons.Body.Main:FindFirstChild("Banner")
+			and newSummons.Body.Main.Banner:FindFirstChild("Buttons")
+
+		if bannerButtons then
+			for index = 1, 4 do
+				local button = getGuiButtonFromItem(bannerButtons:FindFirstChild(tostring(index)))
+				if button then
+					table.insert(buttons, button)
+				end
+			end
+		end
+	end
+
+	if #buttons > 0 then
+		return buttons
+	end
+
+	local legacyBottomBar = CoreGameGui.Summon.SummonFrame.Banner.Bottom_Bar.Bottom_Bar
+	for _, button in legacyBottomBar:GetChildren() do
+		if button:IsA("GuiButton") then
+			table.insert(buttons, button)
+		end
+	end
+
+	return buttons
+end
+
+local function waitForSummonAction()
+	local clickedOnSummon = false
+	local buttons = getSummonActionButtons()
+
+	while #buttons == 0 do
+		task.wait(0.1)
+		buttons = getSummonActionButtons()
+	end
+
+	for _, button in ipairs(buttons) do
+		button.Activated:Once(function()
+			clickedOnSummon = true
+		end)
+	end
+
+	repeat task.wait(0.1) until clickedOnSummon
+end
+
 tutorialEvents["Continue"] = function(callback)
 	ContinueButton.Visible = true
 	ContinueButton.Activated:Wait()
@@ -118,17 +181,7 @@ end
 
 tutorialEvents["SummonUnit"] = function(callback)
 	print('Waiting for them to summon a unit')
-	local clickedOnSummon = false
-	local BottomBar = CoreGameGui.Summon.SummonFrame.Banner.Bottom_Bar.Bottom_Bar
-
-	for _, button in BottomBar:GetChildren() do
-		if not button:IsA("ImageButton") then continue end
-		button.Activated:Once(function()
-			clickedOnSummon = true
-		end)
-	end
-
-	repeat task.wait(.1) until clickedOnSummon
+	waitForSummonAction()
 
 	callback()
 end
@@ -168,7 +221,13 @@ end
 tutorialEvents['ExitSummonArea'] = function(callback)
 
 	--repeat task.wait() until CoreGameGui.Buttons.Settings.Position == UDim2.fromScale(0.99,0.99)
-	CoreGameGui.Summon.SummonFrame:GetPropertyChangedSignal('Visible'):Wait()
+	local summonFrame = findSummonFrame()
+	while not summonFrame do
+		task.wait(0.1)
+		summonFrame = findSummonFrame()
+	end
+
+	summonFrame:GetPropertyChangedSignal('Visible'):Wait()
 
 	-- how can we wait till we finished summoning?
 	repeat task.wait() until ReplicatedStorage:FindFirstChild('SummonDone') 
@@ -204,17 +263,7 @@ tutorialEvents["Summon2"] = function(callback)
 end
 
 tutorialEvents["SummonUnit2"] = function(callback)
-	local clickedOnSummon = false
-	local BottomBar = CoreGameGui.Summon.SummonFrame.Banner.Bottom_Bar.Bottom_Bar
-
-	for _, button in BottomBar:GetChildren() do
-		if not button:IsA("ImageButton") then continue end
-		button.Activated:Once(function()
-			clickedOnSummon = true
-		end)
-	end
-
-	repeat task.wait(.1) until clickedOnSummon
+	waitForSummonAction()
 
 	callback()
 end

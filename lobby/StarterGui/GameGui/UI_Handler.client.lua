@@ -44,7 +44,12 @@ local buttons = {}
 local buttonTargets = {}
 local buttonVisuals = {}
 local buttonguis = {}
-local blacklist = { sideMenu }
+local persistentNewUIChildren = {
+	sideMenu = true,
+	HUDButtons = true,
+	IngameHud = true,
+	Values = true,
+}
 local othermenus = { IndexFrame, TraitFrame, DailyRewardFrame, GroupRewardsFrame }
 local openuionstart = { DailyRewardFrame }
 local buttonguistatus = {}
@@ -99,6 +104,26 @@ local function normalizeName(name)
 	return typeof(name) == "string" and string.lower(name) or name
 end
 
+local function debugSummonMenu(...)
+	warn("[SummonOpenDebug]", ...)
+end
+
+local function getSummonMenuTarget()
+	local newSummons = NewUI:FindFirstChild("Summons")
+	debugSummonMenu(
+		"getSummonMenuTarget",
+		"hasNewSummons=" .. tostring(newSummons ~= nil),
+		"class=" .. tostring(newSummons and newSummons.ClassName),
+		"visible=" .. tostring(newSummons and newSummons.Visible)
+	)
+	return newSummons and "Summons" or "SummonFrame"
+end
+
+local function getJunkTraderMenuTarget()
+	local newJunkTrader = NewUI:FindFirstChild("JunkTrader")
+	return newJunkTrader and "JunkTrader" or "JunkTraderFrame"
+end
+
 local closeAllAliases = {
 	areasframe = "Areas",
 	area = "Areas",
@@ -128,7 +153,17 @@ local sideMenuActions = {
 
 local function normalizeCloseAllTarget(name)
 	if not name then return nil end
-	return closeAllAliases[normalizeName(name)] or name
+
+	local normalizedName = normalizeName(name)
+	if normalizedName == "summon" or normalizedName == "summonframe" or normalizedName == "summons" then
+		return getSummonMenuTarget()
+	end
+
+	if normalizedName == "junktrader" or normalizedName == "junktraderframe" then
+		return getJunkTraderMenuTarget()
+	end
+
+	return closeAllAliases[normalizedName] or name
 end
 
 local function resolveButtonTarget(button)
@@ -136,7 +171,22 @@ local function resolveButtonTarget(button)
 	return sideMenuActions[normalizeName(rawTarget)] or normalizeCloseAllTarget(rawTarget)
 end
 
+local function isManagedMenuGuiObject(instance)
+	if not instance or persistentNewUIChildren[instance.Name] then
+		return false
+	end
+
+	return instance:IsA("Frame")
+		or instance:IsA("ScrollingFrame")
+		or instance:IsA("ImageButton")
+		or instance:IsA("TextButton")
+end
+
 local function selectInstanceFromString(except)
+	if not except then
+		return nil
+	end
+
 	local foundInstance = nil
 	local normalizedExcept = normalizeName(except)
 
@@ -156,11 +206,40 @@ local function selectInstanceFromString(except)
 		end
 	end
 
+	if not foundInstance then
+		local directMatch = NewUI:FindFirstChild(except) or NewUI:FindFirstChild(except, true)
+		if directMatch and directMatch:IsA("GuiObject") then
+			foundInstance = directMatch
+		end
+	end
+
 	return foundInstance
 end
 
 local function closeall(except, dontOverride)
+	local originalExcept = except
 	except = normalizeCloseAllTarget(except)
+
+	if not except and not prev then
+		toggleRobloxHud(true)
+
+		tween(workspace.Camera, 0.3, { FieldOfView = 70 })
+		if Lighting:FindFirstChild("NewUIBlur") then
+			tween(Lighting.NewUIBlur, 0.3, { Size = 0 })
+		end
+		UIHandlerModule.EnableAllButtons()
+		Simplebar.toggleSimplebar(true)
+		_G.CurrentlyOpen = false
+		return
+	end
+
+	if normalizeName(originalExcept) == "summon"
+		or normalizeName(originalExcept) == "summonframe"
+		or normalizeName(originalExcept) == "summons"
+		or normalizeName(except) == "summonframe"
+		or normalizeName(except) == "summons" then
+		debugSummonMenu("closeall:requested", "original=" .. tostring(originalExcept), "normalized=" .. tostring(except))
+	end
 
 	if not player:FindFirstChild("TutorialWin") then return end
 	if not player.TutorialWin.Value and except and string.find(except, 'DailyReward') then return end
@@ -230,6 +309,22 @@ local function closeall(except, dontOverride)
 
 	local foundInstance = selectInstanceFromString(except)
 
+	if normalizeName(except) == "summonframe" or normalizeName(except) == "summons" then
+		local newSummons = NewUI:FindFirstChild("Summons")
+		local legacySummon = PlayerGui:FindFirstChild("CoreGameUI")
+			and PlayerGui.CoreGameUI:FindFirstChild("Summon")
+			and PlayerGui.CoreGameUI.Summon:FindFirstChild("SummonFrame")
+
+		debugSummonMenu(
+			"closeall:resolved",
+			"except=" .. tostring(except),
+			"found=" .. tostring(foundInstance and foundInstance:GetFullName()),
+			"foundClass=" .. tostring(foundInstance and foundInstance.ClassName),
+			"newVisibleBefore=" .. tostring(newSummons and newSummons.Visible),
+			"legacyVisibleBefore=" .. tostring(legacySummon and legacySummon.Visible)
+		)
+	end
+
 	if foundInstance then
 		Simplebar.toggleSimplebar(false)
 		foundInstance.AnchorPoint = Vector2.new(.5, .5)
@@ -250,6 +345,21 @@ local function closeall(except, dontOverride)
 		local closeTween = TweenService:Create(foundInstance, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = UDim2.fromScale(0.5, 0.5) })
 		closeTween:Play()
 		_G.CurrentlyOpen = true
+
+		if normalizeName(except) == "summonframe" or normalizeName(except) == "summons" then
+			local newSummons = NewUI:FindFirstChild("Summons")
+			local legacySummon = PlayerGui:FindFirstChild("CoreGameUI")
+				and PlayerGui.CoreGameUI:FindFirstChild("Summon")
+				and PlayerGui.CoreGameUI.Summon:FindFirstChild("SummonFrame")
+
+			debugSummonMenu(
+				"closeall:after-open",
+				"except=" .. tostring(except),
+				"foundVisible=" .. tostring(foundInstance.Visible),
+				"newVisibleAfter=" .. tostring(newSummons and newSummons.Visible),
+				"legacyVisibleAfter=" .. tostring(legacySummon and legacySummon.Visible)
+			)
+		end
 	else
 		tween(workspace.Camera, 0.3, { FieldOfView = 70 })
 		if Lighting:FindFirstChild("NewUIBlur") then
@@ -312,13 +422,13 @@ end
 collectMenuButtons(sideMenu)
 
 for _, uiElement in NewUI:GetChildren() do
-	if table.find(blacklist, uiElement) then continue end
+	if persistentNewUIChildren[uiElement.Name] then continue end
 
-	if uiElement:IsA("Frame") or uiElement:IsA("ScrollingFrame") then
+	if isManagedMenuGuiObject(uiElement) then
 		table.insert(buttonguis, uiElement)
 	elseif uiElement:IsA("Folder") or uiElement:IsA("ScreenGui") then
 		for _, frame in uiElement:GetChildren() do
-			if frame:IsA("Frame") or frame:IsA("ScrollingFrame") then
+			if isManagedMenuGuiObject(frame) then
 				table.insert(buttonguis, frame)
 			end
 		end
@@ -473,6 +583,7 @@ for i, v in buttons do
 			local character = player.Character
 
 			if actionName == "summon" then
+				debugSummonMenu("menuButton:summon", "button=" .. tostring(v.Name), "framename=" .. tostring(framename))
 				if character then
 					character:PivotTo(workspace.SummonTeleporters.Teleport.CFrame)
 				end

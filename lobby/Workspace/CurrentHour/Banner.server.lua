@@ -12,10 +12,19 @@ local function main()
 			local hourInterval = 3600/2 
 			script.Parent.Value = currentTime + hourInterval
 
-			local mythicals = chanceModule.updateBanner()
+			local banners = chanceModule.updateBanner()
 
-			for i, v in pairs(mythicals) do
-				script.Parent:SetAttribute("Mythical" .. tostring(i), v)
+			for bannerIndex, mythicals in ipairs(banners) do
+				for mythicalIndex, mythicalName in ipairs(mythicals) do
+					script.Parent:SetAttribute(
+						string.format("Banner%dMythical%d", bannerIndex, mythicalIndex),
+						mythicalName
+					)
+
+					if bannerIndex == 1 then
+						script.Parent:SetAttribute("Mythical" .. tostring(mythicalIndex), mythicalName)
+					end
+				end
 			end
 		end
 		

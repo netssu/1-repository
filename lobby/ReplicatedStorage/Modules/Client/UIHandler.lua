@@ -11,13 +11,68 @@ if game:GetService("RunService"):IsClient() then
 	local PlayerGUI = Player.PlayerGui
 	repeat task.wait() until PlayerGUI:FindFirstChild('GameGui')
 	local GameGUI = PlayerGUI:FindFirstChild('GameGui')
-	local HUD = PlayerGUI:WaitForChild('CoreGameUI'):WaitForChild('HUD')
+	local CoreGameUI = PlayerGUI:WaitForChild('CoreGameUI', 5)
+	local HUD = CoreGameUI and CoreGameUI:FindFirstChild('HUD')
 
 	local function getSideMenu()
 		local NewUI = PlayerGUI:FindFirstChild('NewUI')
 		if not NewUI then return nil end
 
 		return NewUI:FindFirstChild('sideMenu') or NewUI:FindFirstChild('HUDButtons')
+	end
+
+	local function getValuesContainer()
+		local NewUI = PlayerGUI:FindFirstChild("NewUI")
+		return NewUI and NewUI:FindFirstChild("Values")
+	end
+
+	local function setGuiVisibility(target, visible)
+		if not target then return end
+
+		if target:IsA("GuiObject") then
+			target.Visible = visible
+			return
+		end
+
+		if target:IsA("LayerCollector") then
+			target.Enabled = visible
+			return
+		end
+
+		for _, child in target:GetChildren() do
+			if child:IsA("GuiObject") then
+				child.Visible = visible
+			elseif child:IsA("LayerCollector") then
+				child.Enabled = visible
+			end
+		end
+	end
+
+	local function getIngameHudBottom()
+		local NewUI = PlayerGUI:FindFirstChild("NewUI")
+		local IngameHud = NewUI and NewUI:FindFirstChild("IngameHud")
+		local Bottom = IngameHud and IngameHud:FindFirstChild("Bottom")
+
+		if Bottom and Bottom:IsA("GuiObject") then
+			return Bottom
+		end
+
+		return nil
+	end
+
+	local function getLegacySlotFrame()
+		local slotsGui = GameGUI and GameGUI:FindFirstChild("Slots")
+		local slotFrame = slotsGui and slotsGui:FindFirstChild("Slots")
+
+		if slotFrame and slotFrame:IsA("GuiObject") then
+			return slotFrame
+		end
+
+		return nil
+	end
+
+	local function getHudBottomContainer()
+		return getIngameHudBottom() or getLegacySlotFrame()
 	end
 
 	local function hasNewSideMenu()
@@ -27,61 +82,16 @@ if game:GetService("RunService"):IsClient() then
 
 	local function setSideMenuVisible(visible)
 		local sideMenu = getSideMenu()
+		local valuesContainer = getValuesContainer()
 
 		if sideMenu and sideMenu:IsA('GuiObject') then
 			sideMenu.Visible = visible
 		end
+
+		setGuiVisibility(valuesContainer, visible)
 	end
 
-	local possibleExceptions = {
-		--["SlotFrame"] = {
-		--	["UI"] = GameGUI:WaitForChild("Slots"):WaitForChild("Slots"),
-		--	["NewProperties"] = {
-		--		["Position"] = UDim2.fromScale(0.5,1.2)
-		--	},
-		--	["OriginalProperties"] = {
-		--		["Position"] = UDim2.fromScale(0.5,0.99)
-		--	}
-		--      },
-		['Exp_Frame'] = {
-			['UI'] = GameGUI.Slots.Slots.Exp_Frame,
-			['NewProperties'] = {
-				['Position'] = UDim2.fromScale(0.5,-0.5)
-			},
-			['OriginalProperties'] = {
-				['Position'] = UDim2.fromScale(0.5, 0.02)
-			}
-		},
-		['Units_Bar'] = {
-			["UI"] =GameGUI.Slots.Slots.Units_Bar,
-			["NewProperties"] = {
-				["Position"] = UDim2.fromScale(0.5, 1.2)
-			},
-			["OriginalProperties"] = {
-				["Position"] = UDim2.fromScale(0.5, 0.99)
-			}
-		}
-
-		--["Level"] = {
-		--	["UI"] = GameGUI:WaitForChild("Slots"):WaitForChild("Level"),
-		--	["NewProperties"] = {
-		--		["Position"] = UDim2.new(0.5, 0, 1.1, 0)
-		--	},
-		--	["OriginalProperties"] = {
-		--		["Position"] = UDim2.new(0.5, 0,0.958, 0)
-		--	}
-		--},
-
-		--["SummonFrame"] = {
-		--	["UI"] = GameGUI:WaitForChild("Summon"):WaitForChild("SummonFrame"),
-		--	["NewProperties"] = {
-		--		["Position"] = UDim2.new(-1, 0, 0, 0)
-		--	},
-		--	["OriginalProperties"] = {
-		--		["Position"] = UDim2.new(0, 0,0, 0)
-		--	}
-		--}
-	}
+	local possibleExceptions = {}
 
 	function UIHandler.CreateConfetti()
 		coroutine.wrap(function()
@@ -185,7 +195,7 @@ if game:GetService("RunService"):IsClient() then
 		local PlayerGUI = Player.PlayerGui
 
 		local GameGUI = PlayerGUI.GameGui
-		local SlotFrame = GameGUI.Slots.Slots
+		local SlotFrame = getHudBottomContainer()
 		--local InventoryFrame = PlayerGUI.UnitsGui.Inventory.Units
 		--local ItemFrame = GameGUI.Items.ItemsFrame
 		--Positions[SlotFrame.Name] = UDim2.new(0.5, 0,0.865, 0)  --SlotFrame.Position
@@ -203,13 +213,17 @@ if game:GetService("RunService"):IsClient() then
 		--	end
 
 		--end
-		if exceptions and table.find(exceptions, 'Slots') then
-			SlotFrame.Visible = true
-		else
-			SlotFrame.Visible = false
+		if SlotFrame then
+			if exceptions and table.find(exceptions, 'Slots') then
+				SlotFrame.Visible = true
+			else
+				SlotFrame.Visible = false
+			end
 		end
 
-		HUD.Visible = false
+		if HUD then
+			HUD.Visible = false
+		end
 		setSideMenuVisible(false)
 
 		--TweenService:Create(InventoryFrame, TweenInfo.new(0.25, Enum.EasingStyle.Sine), {Position = UDim2.new(.5,0,1.5,0)}):Play()
@@ -242,8 +256,8 @@ if game:GetService("RunService"):IsClient() then
 		--local PlayerGUI = Player.PlayerGui
 
 		--local GameGUI = PlayerGUI.GameGui
-		local CoreGUI = PlayerGUI.CoreGameUI
-		local SlotFrame = GameGUI.Slots.Slots
+		local CoreGUI = PlayerGUI:FindFirstChild("CoreGameUI")
+		local SlotFrame = getHudBottomContainer()
 		--local InventoryFrame = PlayerGUI.UnitsGui.Inventory.Units
 		--local ItemFrame = GameGUI.Items.ItemsFrame
 
@@ -254,16 +268,20 @@ if game:GetService("RunService"):IsClient() then
 		--	end
 		--end
 
-		SlotFrame.Visible = true
+		if SlotFrame then
+			SlotFrame.Visible = true
+		end
 		setSideMenuVisible(true)
-		HUD.Visible = not hasNewSideMenu()
+		if HUD then
+			HUD.Visible = not hasNewSideMenu()
+		end
 
 		--TweenService:Create(InventoryFrame, TweenInfo.new(0.25, Enum.EasingStyle.Sine), {AnchorPoint = Vector2.new(0,1)}):Play()
 		--TweenService:Create(ItemFrame, TweenInfo.new(0.25, Enum.EasingStyle.Sine), {AnchorPoint = Vector2.new(0,1)}):Play()
 		--TweenService:Create(SlotFrame, TweenInfo.new(0.3, Enum.EasingStyle.Sine), {Position = Positions[SlotFrame.Name]}):Play()
 		--TweenService:Create(GameGUI.Slots.Level, TweenInfo.new(0.3, Enum.EasingStyle.Sine), {Position = UDim2.new(0.5, 0,0.958, 0)}):Play()
 		--TweenService:Create(GameGUI.Slots.Currecny, TweenInfo.new(0.3, Enum.EasingStyle.Sine), {Position = UDim2.new(0.5, 0,0.794, 0)}):Play()
-		if not hasNewSideMenu() then
+		if CoreGUI and not hasNewSideMenu() then
 			for i, v in CoreGUI.Buttons:GetChildren() do
 				if v:IsA("ImageButton") then
 					TweenService:Create(v, TweenInfo.new(0.4, Enum.EasingStyle.Sine), {Position = Positions[v.Name]}):Play()

@@ -29,9 +29,16 @@ local requiredSlotLevel = {0,0,0,10,20,30}
 
 -- VARIABLES
 _G.traitTowerSelection = false
+_G.traitTowerSelectTower = nil
+_G.traitTowerCancelSelection = nil
 _G.InventoryButtonsClickable = true
 _G.evolveTowerSelection = false
 _G.levelupTowerSelection = false
+_G.junkTraderTowerSelection = false
+_G.junkTraderCanSelectTower = nil
+_G.junkTraderIsTowerSelected = nil
+_G.junkTraderSelectTower = nil
+_G.junkTraderCancelSelection = nil
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -84,10 +91,6 @@ local SelectRarityFilters = SellMenu:WaitForChild("Select_Rarity")
 
 local CoreGameGui = playerGui:WaitForChild("CoreGameUI", 3)
 local GameGui = playerGui:WaitForChild("GameGui", 3)
-local SlotsContainer = GameGui and GameGui:FindFirstChild("Slots") and GameGui.Slots.Slots.Units_Bar
-local LevelFrame = SlotsContainer and SlotsContainer.Parent.Exp_Frame
-local LevelBar = LevelFrame and LevelFrame.CanvasGroup.Glow
-local LevelNumber = LevelFrame and LevelFrame.Level
 local LvlUp = GameGui and GameGui:FindFirstChild("LvlUp")
 local LvlUpFrame = LvlUp and LvlUp:FindFirstChild("LvlUpFrame")
 
@@ -99,6 +102,7 @@ local viewdebounce = false
 local inGui = false
 local oldEquippedTowers = {}
 local latestSelectedButton
+local refreshInventoryButtonVisibility
 
 local currentFilter = "None"
 local selectState = "None" 
@@ -169,6 +173,65 @@ local filteringType = {
 }
 
 -- FUNCTIONS
+local function getIngameHudBottom()
+	local ingameHud = NewUI:FindFirstChild("IngameHud")
+	local bottom = ingameHud and ingameHud:FindFirstChild("Bottom")
+
+	if bottom and bottom:IsA("GuiObject") then
+		return bottom
+	end
+
+	return nil
+end
+
+local function getLegacySlotsContainer()
+	local slotsGui = GameGui and GameGui:FindFirstChild("Slots")
+	local slotsRoot = slotsGui and slotsGui:FindFirstChild("Slots")
+	local unitsBar = slotsRoot and slotsRoot:FindFirstChild("Units_Bar")
+
+	if unitsBar and unitsBar:IsA("GuiObject") then
+		return unitsBar
+	end
+
+	return nil
+end
+
+local function getSlotsContainer()
+	local bottom = getIngameHudBottom()
+	local slotContainer = bottom and bottom:FindFirstChild("Slot")
+
+	if slotContainer and slotContainer:IsA("GuiObject") then
+		return slotContainer
+	end
+
+	return getLegacySlotsContainer()
+end
+
+local function getSlotByIndex(index)
+	local slotContainer = getSlotsContainer()
+	if not slotContainer then return nil end
+
+	return slotContainer:FindFirstChild(tostring(index)) or slotContainer:FindFirstChild("Unit" .. tostring(index))
+end
+
+local function resolvePlayerLevelObjects()
+	local bottom = getIngameHudBottom()
+	local levelBar = bottom and bottom:FindFirstChild("LevelBar")
+	local fill = levelBar and levelBar:FindFirstChild("Fill")
+	local text = levelBar and levelBar:FindFirstChild("Text")
+
+	if fill and text then
+		return fill, text
+	end
+
+	local legacySlotsContainer = getLegacySlotsContainer()
+	local levelFrame = legacySlotsContainer and legacySlotsContainer.Parent and legacySlotsContainer.Parent:FindFirstChild("Exp_Frame")
+	local legacyFill = levelFrame and levelFrame:FindFirstChild("CanvasGroup") and levelFrame.CanvasGroup:FindFirstChild("Glow")
+	local legacyText = levelFrame and levelFrame:FindFirstChild("Level")
+
+	return legacyFill, legacyText
+end
+
 local function getRarityColor(rarity)
 	local borderInfo = ReplicatedStorage.Borders:FindFirstChild(rarity)
 	if borderInfo then
@@ -178,6 +241,199 @@ local function getRarityColor(rarity)
 		if typeof(borderInfo.Color) == "Color3" then return borderInfo.Color end
 	end
 	return Color3.fromRGB(200, 200, 200)
+end
+
+local function findSlotViewportParent(slot)
+	return slot and (slot:FindFirstChild("Placeholder") or slot:FindFirstChild("Internal"))
+end
+
+local function clearSlotViewport(slot)
+	local viewportParent = findSlotViewportParent(slot)
+	if not viewportParent then return end
+
+	for _, child in pairs(viewportParent:GetChildren()) do
+		if child:IsA("ViewportFrame") then
+			child:Destroy()
+		end
+	end
+end
+
+local function getSlotLevelLabel(slot)
+	return slot and slot:FindFirstChild("Unit_Level", true)
+end
+
+local function getSlotNameLabel(slot)
+	return slot and (slot:FindFirstChild("Name") or slot:FindFirstChild("Unit_Name", true))
+end
+
+local function getSlotCostLabel(slot)
+	return slot and (slot:FindFirstChild("AmountCost") or slot:FindFirstChild("Unit_Value", true))
+end
+
+local function getSlotTraitIcon(slot)
+	return slot and slot:FindFirstChild("TraitIcon", true)
+end
+
+local strokeToneProfiles = {
+	["1"] = {
+		saturationMultiplier = 1,
+		valueMultiplier = 136 / 255,
+	},
+	["2"] = {
+		saturationMultiplier = 0.93,
+		valueMultiplier = 43 / 255,
+	},
+	["3"] = {
+		saturationMultiplier = 0.54,
+		valueMultiplier = 65 / 255,
+	},
+}
+
+local function buildStrokeColorSequence(baseSequence, strokeName)
+	local profile = strokeToneProfiles[strokeName]
+	if not profile then
+		return baseSequence
+	end
+
+	local baseColor = baseSequence.Keypoints[1].Value
+	local hue, saturation, value = baseColor:ToHSV()
+	local tonedColor = Color3.fromHSV(
+		hue,
+		math.clamp(saturation * profile.saturationMultiplier, 0, 1),
+		math.clamp(value * profile.valueMultiplier, 0, 1)
+	)
+
+	return ColorSequence.new{
+		ColorSequenceKeypoint.new(0, tonedColor),
+		ColorSequenceKeypoint.new(1, tonedColor),
+	}
+end
+
+local function applyStrokeColor(container, colorSequence)
+	if not container then return end
+
+	for _, child in ipairs(container:GetChildren()) do
+		if child:IsA("UIStroke") then
+			local strokeSequence = buildStrokeColorSequence(colorSequence, child.Name)
+
+			if child:FindFirstChild("UIGradient") then
+				child.UIGradient.Color = strokeSequence
+			else
+				child.Color = strokeSequence.Keypoints[1].Value
+			end
+		end
+	end
+end
+
+local function setSlotGradient(slot, colorSequence)
+	if not slot then return end
+
+	local bg = slot:FindFirstChild("Bg")
+	if bg then
+		if bg:FindFirstChild("UIGradient") then
+			bg.UIGradient.Color = colorSequence
+		else
+			bg.BackgroundColor3 = colorSequence.Keypoints[1].Value
+		end
+	end
+
+	applyStrokeColor(bg, colorSequence)
+	applyStrokeColor(slot, colorSequence)
+
+	local internal = slot:FindFirstChild("Internal")
+	if internal then
+		local glow = internal:FindFirstChild("Glow")
+		if glow and glow:FindFirstChild("UIGradient") then
+			glow.UIGradient.Color = colorSequence
+		end
+
+		local mainFrame = internal:FindFirstChild("Main_Unit_ Frame")
+		if mainFrame and mainFrame:FindFirstChild("UIGradient") then
+			mainFrame.UIGradient.Color = colorSequence
+		end
+	end
+end
+
+local function setSlotText(label, value)
+	if label and label:IsA("TextLabel") then
+		label.Text = value
+	end
+end
+
+local function setSlotGlowVisible(slot, visible)
+	local glow = slot and slot:FindFirstChild("Glow", true)
+	if glow and glow:IsA("GuiObject") then
+		glow.Visible = visible
+	end
+end
+
+local function clearSlotDisplay(slot, index)
+	local gray = Color3.fromRGB(100, 100, 100)
+	local graySequence = ColorSequence.new{
+		ColorSequenceKeypoint.new(0, gray),
+		ColorSequenceKeypoint.new(1, gray),
+	}
+	local lock = slot and slot:FindFirstChild("Locked")
+	local traitIcon = getSlotTraitIcon(slot)
+
+	clearSlotViewport(slot)
+	slot.Visible = true
+	setSlotGradient(slot, graySequence)
+	setSlotGlowVisible(slot, false)
+	setSlotText(getSlotLevelLabel(slot), "")
+	setSlotText(getSlotNameLabel(slot), "")
+	setSlotText(getSlotCostLabel(slot), "")
+
+	if traitIcon then
+		traitIcon.Visible = false
+	end
+
+	if lock then
+		lock.Visible = player.PlayerLevel.Value < requiredSlotLevel[index]
+	end
+end
+
+local function fillSlotDisplay(slot, tower)
+	local statsTower = UpgradesModule[tower.Name]
+	local viewportParent = findSlotViewportParent(slot)
+	local lock = slot and slot:FindFirstChild("Locked")
+	local traitIcon = getSlotTraitIcon(slot)
+
+	clearSlotViewport(slot)
+	slot.Visible = true
+
+	if lock then
+		lock.Visible = false
+	end
+
+	if traitIcon then
+		traitIcon.Visible = false
+	end
+
+	setSlotGlowVisible(slot, tower:GetAttribute("Shiny"))
+	setSlotText(getSlotLevelLabel(slot), "Lvl " .. tower:GetAttribute("Level"))
+	setSlotText(getSlotNameLabel(slot), tower.Name)
+
+	if statsTower then
+		setSlotText(getSlotCostLabel(slot), math.round(statsTower.Upgrades[1].Price) .. "$")
+
+		local rarity = statsTower.Rarity
+		local gradientRarity = rarity and ReplicatedStorage.Borders:FindFirstChild(rarity)
+		if gradientRarity and gradientRarity:IsA("UIGradient") then
+			setSlotGradient(slot, gradientRarity.Color)
+		end
+	else
+		setSlotText(getSlotCostLabel(slot), "")
+	end
+
+	if viewportParent then
+		local vp = ViewPortModule.CreateViewPort(tower.Name, tower:GetAttribute("Shiny"))
+		if viewportParent.Name == "Placeholder" then
+			vp.Size = UDim2.fromScale(1, 1)
+			vp.Name = tower.Name
+		end
+		vp.Parent = viewportParent
+	end
 end
 
 local function findDictionaryIndex(dictionary,element)
@@ -258,12 +514,20 @@ local function GetSellPrice()
 end
 
 local function updatePlayerLevelBar()
+	local LevelBar, LevelNumber = resolvePlayerLevelObjects()
 	if not LevelBar or not LevelNumber then return end
+
 	local playerLevelValue = player.PlayerLevel.Value
 	local playerExpValue = player.PlayerExp.Value
 	local requireExp = ExpModule.playerExpCalculation(playerLevelValue)
+	local progress = requireExp > 0 and (playerExpValue / requireExp) or 0
 
-	LevelBar.Size = UDim2.fromScale((playerExpValue/requireExp) * (0.904 - 0.031), 1)
+	if LevelBar.Name == "Fill" then
+		LevelBar.Size = UDim2.fromScale(progress, 1)
+	else
+		LevelBar.Size = UDim2.fromScale(progress * (0.904 - 0.031), 1)
+	end
+
 	LevelNumber.Text = `Level {playerLevelValue} [{playerExpValue}/{requireExp}]`
 end
 
@@ -369,52 +633,94 @@ local function updateInventory()
 
 	UnitsQuantityText.Text = "Units: "..tostring(#player.OwnedTowers:GetChildren()).."/"..player.MaxUnits.Value
 
-	if SlotsContainer then
-		for i=1, 6 do
-			local tower = equippedTowers[`{i}`]
-			local slot = SlotsContainer:FindFirstChild("Unit"..`{i}`)
-			if slot then
-				local HasViewPort = slot.Internal:FindFirstChildOfClass("ViewportFrame")
-				if HasViewPort then HasViewPort:Destroy() end
+	for i = 1, 6 do
+		local tower = equippedTowers[`{i}`]
+		local slot = getSlotByIndex(i)
 
-				if tower then
-					slot.Internal.Glow.Visible = tower:GetAttribute("Shiny")
-					local vp = ViewPortModule.CreateViewPort(tower.Name,tower:GetAttribute("Shiny"))
-					vp.Parent = slot.Internal
-
-					slot.Internal.Text_Container.Unit_Level.Text = 'Lvl ' .. tower:GetAttribute("Level")
-					slot.Internal['Text_Container'].Unit_Name.Text = tower.Name
-
-					local statsTower = UpgradesModule[tower.Name]
-					if statsTower then
-						slot.Internal.Unit_Value.Text = math.round(statsTower["Upgrades"][1].Price).."$"
-						local rarity = statsTower["Rarity"]
-						if rarity then
-							local gradientRarity = ReplicatedStorage.Borders:FindFirstChild(rarity)
-							if gradientRarity then
-								slot.Internal.Glow.UIGradient.Color = gradientRarity.Color
-								slot.Internal['Main_Unit_ Frame'].UIGradient.Color = gradientRarity.Color
-							end
-						end
-					end
-				else
-					local gray = Color3.fromRGB(100,100,100)
-					if slot.Internal:FindFirstChild('Main_Unit_ Frame') then
-						slot.Internal['Main_Unit_ Frame'].UIGradient.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, gray),ColorSequenceKeypoint.new(1, gray)}
-					end
-					slot.Internal.TraitIcon.Visible = false
-					slot.Internal.Glow.Visible = false
-					slot.Internal.Text_Container.Unit_Level.Text = ""
-					slot.Internal.Unit_Value.Text = ""
-					slot.Internal['Text_Container'].Unit_Name.Text = ""
-
-					if player.PlayerLevel.Value < requiredSlotLevel[i] and slot:FindFirstChild("Locked") then
-						slot.Locked.Visible = true
-					end
-				end
+		if slot then
+			if tower then
+				fillSlotDisplay(slot, tower)
+			else
+				clearSlotDisplay(slot, i)
 			end
 		end
 	end
+
+	refreshInventoryButtonVisibility()
+end
+
+local function isJunkTraderSelectionActive()
+	return _G.junkTraderTowerSelection == true and typeof(_G.junkTraderSelectTower) == "function"
+end
+
+local function selectTowerForWillpower(button, tower)
+	if not button or not tower or typeof(_G.traitTowerSelectTower) ~= "function" then
+		return false
+	end
+
+	return _G.traitTowerSelectTower(button, tower) == true
+end
+
+local function isJunkTraderTowerSelected(tower)
+	return typeof(_G.junkTraderIsTowerSelected) == "function" and _G.junkTraderIsTowerSelected(tower) == true
+end
+
+local function updateJunkTraderSelectionIndicator(button, tower)
+	if not button then
+		return
+	end
+
+	local indicator = button:FindFirstChild("Currency Icon") or button:FindFirstChild("Fuse_Icon")
+	if indicator then
+		indicator.Visible = isJunkTraderSelectionActive() and isJunkTraderTowerSelected(tower)
+	end
+end
+
+local function canUseTowerInCurrentSelectionMode(tower)
+	if not tower then
+		return false
+	end
+
+	if _G.evolveTowerSelection == true and not UpgradesModule[tower.Name]["Evolve"] then
+		return false
+	end
+
+	if isJunkTraderSelectionActive() and typeof(_G.junkTraderCanSelectTower) == "function" then
+		return _G.junkTraderCanSelectTower(tower) == true
+	end
+
+	return true
+end
+
+refreshInventoryButtonVisibility = function()
+	local newString = string.lower(SearchBox.Text)
+	local unitsFound = 0
+	local shouldShowDefaultCount = newString == "" and not _G.evolveTowerSelection and not isJunkTraderSelectionActive()
+
+	for _, towerButton in pairs(ContentGrid:GetChildren()) do
+		if towerButton.Name == "1" or not towerButton:IsA("Frame") then continue end
+
+		local tVal = towerButton:FindFirstChild("TowerValue")
+		if not (tVal and tVal.Value) then
+			continue
+		end
+
+		local isVisible = canUseTowerInCurrentSelectionMode(tVal.Value)
+		updateJunkTraderSelectionIndicator(towerButton, tVal.Value)
+		if isVisible and newString ~= "" then
+			local towerName = string.lower(tVal.Value.Name)
+			isVisible = string.sub(towerName, 1, #newString) == newString
+		end
+
+		towerButton.Visible = isVisible
+		if isVisible then
+			unitsFound += 1
+		end
+	end
+
+	UnitsQuantityText.Text = shouldShowDefaultCount
+		and ("Units: " .. tostring(#player.OwnedTowers:GetChildren()) .. "/" .. player.MaxUnits.Value)
+		or ("Units: " .. tostring(unitsFound) .. "/" .. player.MaxUnits.Value)
 end
 
 local function addButton(tower)
@@ -435,8 +741,9 @@ local function addButton(tower)
 
 	if button:FindFirstChild("Currency Icon") then button["Currency Icon"].Visible = false end
 	if button:FindFirstChild("Fuse_Icon") then button.Fuse_Icon.Visible = false end
+	updateJunkTraderSelectionIndicator(button, tower)
 
-	if _G.evolveTowerSelection == true and not UpgradesModule[tower.Name]["Evolve"] then
+	if not canUseTowerInCurrentSelectionMode(tower) then
 		button.Visible = false
 	end
 
@@ -474,6 +781,18 @@ local function addButton(tower)
 	end
 
 	button.Btn.Activated:Connect(function() 
+		if isJunkTraderSelectionActive() then
+			if canUseTowerInCurrentSelectionMode(tower) then
+				_G.junkTraderSelectTower(button, tower)
+			end
+			return
+		end
+
+		if _G.traitTowerSelection == true then
+			selectTowerForWillpower(button, tower)
+			return
+		end
+
 		if _G.traitTowerSelection == false and _G.InventoryButtonsClickable == true and _G.evolveTowerSelection == false and _G.levelupTowerSelection == false then
 			local rarity = statsTower["Rarity"] or "Rare"
 			buttonConnections:DisconnectAll()
@@ -634,6 +953,7 @@ local function addButton(tower)
 	end)
 
 	button.Parent = ContentGrid
+	refreshInventoryButtonVisibility()
 end
 
 local function removeButton(tower)
@@ -674,21 +994,7 @@ EquipBtn.Activated:Connect(function()
 end)
 
 SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
-	local newString = string.lower(SearchBox.Text)
-	local UnitsFound = 0
-
-	for _,towerButton in pairs(ContentGrid:GetChildren()) do
-		if towerButton.Name == "1" or not towerButton:IsA("Frame") then continue end
-		local tVal = towerButton:FindFirstChild("TowerValue")
-		if tVal and tVal.Value then
-			local towerName = string.lower(tVal.Value.Name)
-			local isMatch = (string.sub(towerName,1,#newString) == newString)
-
-			towerButton.Visible = isMatch
-			if isMatch then UnitsFound += 1 end
-		end
-	end
-	UnitsQuantityText.Text = newString == "" and "Units: "..tostring(#player.OwnedTowers:GetChildren()).."/"..player.MaxUnits.Value or "Units: "..tostring(UnitsFound).."/"..player.MaxUnits.Value
+	refreshInventoryButtonVisibility()
 end)
 
 UnequipAllBtn.Activated:Connect(function()
@@ -772,5 +1078,15 @@ end)
 UnitsUI:GetPropertyChangedSignal('Visible'):Connect(function()
 	if UnitsUI.Visible then
 		updateInventory()
+	elseif _G.traitTowerSelection == true then
+		if typeof(_G.traitTowerCancelSelection) == "function" then
+			_G.traitTowerCancelSelection()
+		else
+			_G.traitTowerSelection = false
+			_G.traitTowerSelectTower = nil
+			_G.traitTowerCancelSelection = nil
+		end
+	elseif isJunkTraderSelectionActive() and typeof(_G.junkTraderCancelSelection) == "function" then
+		_G.junkTraderCancelSelection()
 	end
 end)

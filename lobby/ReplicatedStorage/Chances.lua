@@ -107,6 +107,8 @@ local UpgradesModule = require(game.ReplicatedStorage.Upgrades)
 local ItemsModule = require(game.ReplicatedStorage.ItemStats)
 
 module.Mythicals = {}
+module.BannerCount = 3
+module.MythicalsPerBanner = 3
 
 for i, v in UpgradesModule do
 	if v["Rarity"] then
@@ -117,23 +119,29 @@ for i, v in UpgradesModule do
 end
 
 module.updateBanner = function()
-	local currentMythicals = {}
+	local banners = {}
 	local mythicalsToChoose = table.clone(module.Mythicals)
 
 	local now = workspace:GetServerTimeNow()
 	local hourSeed = math.floor(now / (3600/2))
 	local RNG = Random.new(hourSeed)
 
-	for i = 1, 3 do
-		local randomNumber = RNG:NextInteger(1, #mythicalsToChoose)
-		local chosenMythical = mythicalsToChoose[randomNumber]
-		table.insert(currentMythicals, chosenMythical)
-		table.remove(mythicalsToChoose, randomNumber)
-	end
-	
-	
+	for bannerIndex = 1, module.BannerCount do
+		banners[bannerIndex] = {}
 
-	return currentMythicals
+		for mythicalIndex = 1, module.MythicalsPerBanner do
+			if #mythicalsToChoose == 0 then
+				mythicalsToChoose = table.clone(module.Mythicals)
+			end
+
+			local randomNumber = RNG:NextInteger(1, #mythicalsToChoose)
+			local chosenMythical = mythicalsToChoose[randomNumber]
+			table.insert(banners[bannerIndex], chosenMythical)
+			table.remove(mythicalsToChoose, randomNumber)
+		end
+	end
+
+	return banners
 end
 
 
@@ -172,12 +180,38 @@ for i, v in UpgradesModule do
 	end
 end
 
-module.chooseRandomUnit = function(player, isLucky)
-	local currentMythicals = {
-		game.Workspace.CurrentHour:GetAttribute("Mythical1"),
-		game.Workspace.CurrentHour:GetAttribute("Mythical2"),
-		game.Workspace.CurrentHour:GetAttribute("Mythical3"),
-	}
+module.getBannerMythicals = function(bannerIndex)
+	local safeBannerIndex = math.clamp(tonumber(bannerIndex) or 1, 1, module.BannerCount)
+	local currentHour = game.Workspace:WaitForChild("CurrentHour")
+	local currentMythicals = {}
+
+	for mythicalIndex = 1, module.MythicalsPerBanner do
+		local attributeName = string.format("Banner%dMythical%d", safeBannerIndex, mythicalIndex)
+		local mythicalName = currentHour:GetAttribute(attributeName)
+
+		if not mythicalName and safeBannerIndex == 1 then
+			mythicalName = currentHour:GetAttribute("Mythical" .. mythicalIndex)
+		end
+
+		if mythicalName and mythicalName ~= "" then
+			table.insert(currentMythicals, mythicalName)
+		end
+	end
+
+	if #currentMythicals == 0 then
+		for mythicalIndex = 1, module.MythicalsPerBanner do
+			local mythicalName = currentHour:GetAttribute("Mythical" .. mythicalIndex)
+			if mythicalName and mythicalName ~= "" then
+				table.insert(currentMythicals, mythicalName)
+			end
+		end
+	end
+
+	return currentMythicals
+end
+
+module.chooseRandomUnit = function(player, isLucky, bannerIndex)
+	local currentMythicals = module.getBannerMythicals(bannerIndex)
 
 	local randomNumber = (math.random(1,10000))/100
 	local counter = 0
@@ -236,8 +270,7 @@ module.chooseRandomUnit = function(player, isLucky)
 			-- Handle Mythical pity
 			if rarity == "Mythical" or player.MythicalPity.Value >= 400 then
 				player.MythicalPity.Value = 0
-				local rand = math.random(1,4)
-				rand = math.min(rand,3)
+				local rand = math.random(1, math.max(#currentMythicals, 1))
 				newUnit = currentMythicals[rand]
 			else
 				player.MythicalPity.Value += 1
