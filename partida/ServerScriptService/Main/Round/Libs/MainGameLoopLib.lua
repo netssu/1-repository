@@ -21,6 +21,30 @@ local Warning = ReplicatedStorage.ServerWarningEvent
 local module = {}
 
 local EnemySpawnChances = Variables.RoundStats.EnemySpawnChances
+local function debugSkipState(message)
+	if RunService:IsStudio() then
+		local mobCount = 0
+		local mobsFolder = workspace:FindFirstChild("Mobs")
+		if mobsFolder then
+			mobCount = #mobsFolder:GetChildren()
+		else
+			local redMobs = workspace:FindFirstChild("RedMobs")
+			local blueMobs = workspace:FindFirstChild("BlueMobs")
+			mobCount = (redMobs and #redMobs:GetChildren() or 0) + (blueMobs and #blueMobs:GetChildren() or 0)
+		end
+
+		warn(string.format(
+			"[SkipDebug][Round %s/%s] %s | skip=%s open=%s votes=%s mobs=%s",
+			tostring(Variables.CurrentRound),
+			tostring(Variables.MaxWave),
+			message,
+			tostring(Variables.Skip),
+			tostring(Variables.SkipVoteOpen),
+			tostring(Variables.SkipVotes),
+			tostring(mobCount)
+		))
+	end
+end
 
 repeat
 	Variables.CurrentRound += 1
@@ -220,7 +244,7 @@ repeat
 			if unitStats then
 				local health = math.round(unitStats.health * Variables.healthMultiplier)
 				local money = unitStats.money_reward
-				local speed = unitStats.speed * script.Parent.Parent:GetAttribute('SpeedMultiplier')
+				local speed = unitStats.speed * (script.Parent.Parent:GetAttribute('SpeedMultiplier') or 1)
 				local unitName = unitStats.unit
 				local newMob
 				local redMob
@@ -288,7 +312,11 @@ repeat
 	if Variables.died then break end
 
 	if Variables.CurrentRound < Variables.MaxWave then
-		skipvotes = 0
+		Variables.Skip = false
+		Variables.SkipVotes = 0
+		Variables.SkipVoteOpen = true
+		table.clear(Variables.Players)
+		debugSkipState("Opened skip vote window")
 		ReplicatedStorage.Events.SkipGui:FireAllClients(true, { 
 			Required = true
 		})		
@@ -300,7 +328,9 @@ repeat
 	repeat
 		task.wait(0.5)
 		if Variables.Skip == true and Variables.CurrentRound < Variables.MaxWave then
+			debugSkipState("Breaking round wait because skip was approved")
 			Variables.Skip = false
+			Variables.SkipVoteOpen = false
 			break
 		end
 		count += 1
@@ -322,6 +352,8 @@ repeat
 
 		end
 	until roundEnd
+	Variables.SkipVoteOpen = false
+	debugSkipState("Closed skip vote window")
 	ReplicatedStorage.Events.SkipGui:FireAllClients(false)
 
 

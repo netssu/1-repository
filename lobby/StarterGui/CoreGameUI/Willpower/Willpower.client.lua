@@ -13,6 +13,7 @@ local isAutoRerolling = false
 local autoThread = nil
 local CheckIfExists
 local restoreNewWillpowerIndexOnReturn = false
+local lastWillpowerSelectionOpenAt = 0
 
 local NormalReroll = player:WaitForChild("TraitPoint")
 local LuckyReroll = player:WaitForChild("LuckyWillpower")
@@ -138,7 +139,7 @@ local function getDebugInstancePath(instance)
 end
 
 local function debugWillpower(message)
-	warn("[WillpowerDebug] " .. message)
+--	warn("[WillpowerDebug] " .. message)
 end
 
 local function isScreenPointInside(gui, screenPoint)
@@ -153,6 +154,27 @@ local function isScreenPointInside(gui, screenPoint)
 		and screenPoint.Y >= position.Y
 		and screenPoint.X <= position.X + size.X
 		and screenPoint.Y <= position.Y + size.Y
+end
+
+local function isGuiActuallyVisible(gui)
+	if not (gui and gui:IsA("GuiObject")) then
+		return false
+	end
+
+	local current = gui
+	while current do
+		if current:IsA("GuiObject") and current.Visible == false then
+			return false
+		end
+
+		if current:IsA("LayerCollector") and current.Enabled == false then
+			return false
+		end
+
+		current = current.Parent
+	end
+
+	return true
 end
 
 local function formatGuiObjects(guiObjects)
@@ -207,7 +229,7 @@ local function connectGuiAction(root, attributeName, debugName, callback)
 		getDebugInstancePath(actionTarget),
 		actionTarget and actionTarget.ClassName or "nil",
 		tostring(actionMode)
-	))
+		))
 
 	if not actionTarget then
 		return nil
@@ -245,7 +267,7 @@ local function connectGuiAction(root, attributeName, debugName, callback)
 			return
 		end
 
-		if not (actionTarget.Parent and actionTarget.Visible) then
+		if not (actionTarget.Parent and isGuiActuallyVisible(actionTarget) and isGuiActuallyVisible(root)) then
 			return
 		end
 
@@ -255,6 +277,16 @@ local function connectGuiAction(root, attributeName, debugName, callback)
 		end
 
 		local guiObjects = PlayerGui:GetGuiObjectsAtPosition(screenPoint.X, screenPoint.Y)
+		local foundInStack = false
+		for _, guiObject in ipairs(guiObjects) do
+			if guiObject == actionTarget
+				or guiObject:IsDescendantOf(actionTarget)
+				or actionTarget:IsDescendantOf(guiObject) then
+				foundInStack = true
+				break
+			end
+		end
+
 		debugWillpower(string.format(
 			"fallback probe %s | processed=%s | point=%d,%d | stack=%s",
 			debugName,
@@ -262,7 +294,11 @@ local function connectGuiAction(root, attributeName, debugName, callback)
 			screenPoint.X,
 			screenPoint.Y,
 			formatGuiObjects(guiObjects)
-		))
+			))
+
+		if not foundInStack then
+			return
+		end
 
 		if os.clock() - lastTriggerAt < 0.15 then
 			return
@@ -638,7 +674,7 @@ local function safeCloseAll(targetName)
 		tostring(unitsFrame and unitsFrame.Visible),
 		tostring(indexFrame and indexFrame.Visible),
 		tostring(restoreNewWillpowerIndexOnReturn)
-	))
+		))
 
 	if targetName == "Units" and unitsFrame and unitsFrame:IsA("GuiObject") then
 		if newFrame and newFrame:IsA("GuiObject") then
@@ -657,7 +693,7 @@ local function safeCloseAll(targetName)
 			tostring(unitsFrame and unitsFrame.Visible),
 			tostring(indexFrame and indexFrame.Visible),
 			tostring(restoreNewWillpowerIndexOnReturn)
-		))
+			))
 		return true
 	end
 
@@ -677,7 +713,7 @@ local function safeCloseAll(targetName)
 			tostring(currentUnits and currentUnits.Visible),
 			tostring(indexFrame and indexFrame.Visible),
 			tostring(restoreNewWillpowerIndexOnReturn)
-		))
+			))
 		return true
 	end
 
@@ -696,7 +732,7 @@ local function safeCloseAll(targetName)
 			tostring(unitsFrame and unitsFrame.Visible),
 			tostring(indexFrame and indexFrame.Visible),
 			tostring(restoreNewWillpowerIndexOnReturn)
-		))
+			))
 		return true
 	end
 
@@ -812,10 +848,25 @@ local function openWillpowerUnitSelection()
 	safeCloseAll("Units")
 end
 
+local function requestWillpowerUnitSelection()
+	if os.clock() - lastWillpowerSelectionOpenAt < 0.15 then
+		return
+	end
+
+	lastWillpowerSelectionOpenAt = os.clock()
+	openWillpowerUnitSelection()
+end
+
 local function wireNewWillpowerAddButton()
 	local contents = getNewWillpowerContents()
+	local profile = contents and findChildPath(contents, {"Profile"})
 	local addButtonRoot = contents and findChildPath(contents, {"Profile", "+"})
-	connectGuiAction(addButtonRoot, "WillpowerAddConnected", "AddButton", openWillpowerUnitSelection)
+	local placeholderContainer = contents and findChildPath(contents, {"Profile", "Placeholder"})
+	local shadow = profile and profile:FindFirstChild("Shadow")
+
+	connectGuiAction(addButtonRoot, "WillpowerAddConnected", "AddButton", requestWillpowerUnitSelection)
+	connectGuiAction(placeholderContainer, "WillpowerProfileConnected", "ProfilePlaceholder", requestWillpowerUnitSelection)
+	connectGuiAction(shadow, "WillpowerProfileShadowConnected", "ProfileShadow", requestWillpowerUnitSelection)
 end
 
 local function populateNewWillpowerIndex()
@@ -1007,6 +1058,7 @@ script.Parent.SelectedTower.Changed:Connect(function()
 	if CharModel then
 		local vp = ViewPortModule.CreateViewPort(SelectedTower.Value.Name,SelectedTower.Value:GetAttribute("Shiny"),true)
 		vp.ZIndex = 5
+		vp.Active = false
 		vp.AnchorPoint = Vector2.new(.5,.5)
 		vp.Position = UDim2.new(.5,0,.5,0)
 		vp.Size = UDim2.new(1.1,0,1,0)
@@ -1114,11 +1166,11 @@ Reroll = function(LuckyRoll)
 	if tower then
 		if not mythicalpluscooldown then
 			mythicalpluscooldown = true
-			
+
 			local trait = nil
-			
+
 			if LuckyRoll then
-				 trait = game.ReplicatedStorage.Functions.BuyTrait:InvokeServer(tower, LuckyRoll)
+				trait = game.ReplicatedStorage.Functions.BuyTrait:InvokeServer(tower, LuckyRoll)
 			else
 				trait = game.ReplicatedStorage.Functions.BuyTrait:InvokeServer(tower)
 			end
@@ -1214,7 +1266,7 @@ AutoReroll.Activated:Connect(function()
 		AutoReroll.Contents.UIGradient.Color = ColorSequence.new(baseColorBottom)
 		AutoReroll.Contents.Contents.UIGradient.Color = ColorSequence.new(baseColorTop)
 	end
-	
+
 	warn('autoroll time')
 
 	task.spawn(function()
@@ -1252,23 +1304,21 @@ end)
 
 local ClickButtonUnit =  MainFrame.Contents.Unit
 
-ChangeUnit.Activated:Connect(function()
-	openWillpowerUnitSelection()
-end)
+connectGuiAction(ChangeUnit, "WillpowerLegacyChangeUnitConnected", "LegacyChangeUnit", requestWillpowerUnitSelection)
 
 CheckIfExists = ReplicatedStorage.Functions.BuyNowWP
 
 
 
 RobuxReroll.MouseButton1Down:Connect(function()
-local Check = CheckIfExists:InvokeServer("LuckyWillpower")
+	local Check = CheckIfExists:InvokeServer("LuckyWillpower")
 
-warn(Check)
-if not Check then
-	MarketplaceService:PromptProductPurchase(player,3221515245)
-else
-	Reroll(true)
-end
+	warn(Check)
+	if not Check then
+		MarketplaceService:PromptProductPurchase(player,3221515245)
+	else
+		Reroll(true)
+	end
 end)
 
 MarketplaceService.PromptProductPurchaseFinished:Connect(function(userID,productID,isPurchase)

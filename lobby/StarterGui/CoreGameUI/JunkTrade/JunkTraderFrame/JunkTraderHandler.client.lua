@@ -304,10 +304,10 @@ local function ensureSelectionPanelPadding(panel)
 		padding.Parent = panel
 	end
 
-	padding.PaddingLeft = UDim.new(0, 12)
-	padding.PaddingRight = UDim.new(0, 12)
-	padding.PaddingTop = UDim.new(0, 10)
-	padding.PaddingBottom = UDim.new(0, 10)
+	--padding.PaddingLeft = UDim.new(0, 12)
+	--padding.PaddingRight = UDim.new(0, 12)
+	--padding.PaddingTop = UDim.new(0, 10)
+	--padding.PaddingBottom = UDim.new(0, 10)
 
 	local listLayout = panel:FindFirstChildOfClass("UIListLayout")
 	if listLayout then
@@ -467,9 +467,9 @@ local function isEligibleTower(tower, unitKey)
 
 	return not not (
 		Upgrades:FindFirstChild("Legendary") and Upgrades.Legendary:FindFirstChild(tower.Name)
-		or Upgrades:FindFirstChild("Mythical") and Upgrades.Mythical:FindFirstChild(tower.Name)
-		or Upgrades:FindFirstChild("Secret") and Upgrades.Secret:FindFirstChild(tower.Name)
-		or Upgrades:FindFirstChild("Exclusive") and Upgrades.Exclusive:FindFirstChild(tower.Name)
+			or Upgrades:FindFirstChild("Mythical") and Upgrades.Mythical:FindFirstChild(tower.Name)
+			or Upgrades:FindFirstChild("Secret") and Upgrades.Secret:FindFirstChild(tower.Name)
+			or Upgrades:FindFirstChild("Exclusive") and Upgrades.Exclusive:FindFirstChild(tower.Name)
 	)
 end
 
@@ -833,9 +833,9 @@ local function prepareEligibleUnits()
 
 		local isEligible = not selectedUnits[tower] and (
 			Upgrades:FindFirstChild("Legendary") and Upgrades.Legendary:FindFirstChild(tower.Name)
-			or Upgrades:FindFirstChild("Mythical") and Upgrades.Mythical:FindFirstChild(tower.Name)
-			or Upgrades:FindFirstChild("Secret") and Upgrades.Secret:FindFirstChild(tower.Name)
-			or Upgrades:FindFirstChild("Exclusive") and Upgrades.Exclusive:FindFirstChild(tower.Name)
+				or Upgrades:FindFirstChild("Mythical") and Upgrades.Mythical:FindFirstChild(tower.Name)
+				or Upgrades:FindFirstChild("Secret") and Upgrades.Secret:FindFirstChild(tower.Name)
+				or Upgrades:FindFirstChild("Exclusive") and Upgrades.Exclusive:FindFirstChild(tower.Name)
 		)
 
 		unit.Visible = not not isEligible

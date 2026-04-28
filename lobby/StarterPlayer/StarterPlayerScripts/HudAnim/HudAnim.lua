@@ -17,7 +17,7 @@ local Click = require(script.Click)
 local Open = require(script.Open)
 local Close = require(script.Close)
 
-local SoundController = require(script.Parent.Parent.Utility.SoundUtility)
+--local SoundController = require(script.Parent.Parent.Utility.SoundUtility)
 local HudAnim = {}
 local bound = {}
 local state = {}
@@ -131,7 +131,7 @@ local function safe_play(inst: Instance, key: string): ()
 	
 	print()
 	
-	if SoundController.IsSFXMuted() then return end 
+--	if SoundController.IsSFXMuted() then return end 
 	SFX.play_for(inst, key)
 end
 

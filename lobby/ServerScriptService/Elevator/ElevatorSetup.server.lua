@@ -8,7 +8,7 @@ end
 
 
 if script:FindFirstChild('RaidElevatorServer') then
-	for i,v in pairs(workspace.RaidElevators:GetChildren()) do
+	for i,v in pairs(workspace.NewLobby.RaidElevators:GetChildren()) do
 		local skript = script.RaidElevatorServer:Clone()
 		skript.Parent = v
 		skript.Enabled = true

@@ -7,6 +7,7 @@ module.mobLimit = 0
 
 module.Skip = false
 module.SkipVotes = 0
+module.SkipVoteOpen = false
 module.voteStart = false
 module.votedMap = nil
 module.startTime = nil

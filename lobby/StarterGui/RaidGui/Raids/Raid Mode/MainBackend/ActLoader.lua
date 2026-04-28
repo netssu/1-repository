@@ -116,7 +116,7 @@ end
 local prevAct = nil
 
 local function findPlayer()
-	for i, v in workspace.RaidElevators:GetChildren() do
+	for i, v in workspace.NewLobby.RaidElevators:GetChildren() do
 		if v.Players:FindFirstChild(game.Players.LocalPlayer.Name) then
 			return v
 		end

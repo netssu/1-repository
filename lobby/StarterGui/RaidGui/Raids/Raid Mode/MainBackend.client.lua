@@ -14,8 +14,8 @@ local infiniteBtn = BottomBar.Infinite
 local exitBtn = BottomBar.Leave
 local playBtn = BottomBar.Play
 
-infiniteBtn.Play.UIGradient.Color = script.Red.Color
-infiniteBtn.Play.Lines.UIGradient.Color = script.Red.Color
+--BottomBar.Play.UIGradient.Color = script.Red.Color
+--BottomBar.Play.Lines.UIGradient.Color = script.Red.Color
 
 local gui = script.Parent
 
@@ -40,7 +40,7 @@ local function numbertotime(number)
 end
 
 local function findPlayer()
-	for i, v in workspace.RaidElevators:GetChildren() do
+	for i, v in workspace.NewLobby.RaidElevators:GetChildren() do
 		if v.Players:FindFirstChild(game.Players.LocalPlayer.Name) then
 			return v
 		end

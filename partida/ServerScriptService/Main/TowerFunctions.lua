@@ -21,6 +21,72 @@ local TowerSpecialisation = require(ServerStorage.ServerModules.TowerSpecialisat
 local TowerInfo = require(ReplicatedStorage.Modules.Helpers.TowerInfo)
 local Auras = require(ReplicatedStorage.Modules.Auras)
 
+local DEBUG_ATTRIBUTE = "TowerDamageDebug"
+local DEBUG_PREFIX = "[TowerDamageDebug]"
+local debugWarningTimes = {}
+
+local function isDamageDebugEnabled()
+	if workspace:GetAttribute(DEBUG_ATTRIBUTE) == true then
+		return true
+	end
+
+	local info = workspace:FindFirstChild("Info")
+	if not info then
+		return false
+	end
+
+	if info:GetAttribute(DEBUG_ATTRIBUTE) == true then
+		return true
+	end
+
+	local debugValue = info:FindFirstChild(DEBUG_ATTRIBUTE)
+	return debugValue and debugValue:IsA("BoolValue") and debugValue.Value == true
+end
+
+local function getDebugName(value)
+	if typeof(value) == "Instance" then
+		local ok, fullName = pcall(function()
+			return value:GetFullName()
+		end)
+		return if ok then fullName else value.Name
+	end
+
+	return tostring(value)
+end
+
+local function markDamageDebug(tower, target, reason, details)
+	if typeof(tower) ~= "Instance" then
+		return
+	end
+
+	pcall(function()
+		tower:SetAttribute("LastDamageDebugAt", os.clock())
+		tower:SetAttribute("LastDamageDebugReason", tostring(reason))
+		tower:SetAttribute("LastDamageDebugTarget", getDebugName(target))
+		if details ~= nil then
+			tower:SetAttribute("LastDamageDebugDetails", tostring(details))
+		end
+	end)
+end
+
+local function debugDamage(tower, target, reason, details, always)
+	markDamageDebug(tower, target, reason, details)
+
+	local debugEnabled = isDamageDebugEnabled()
+	if not debugEnabled and not always then
+		return
+	end
+
+	local key = `{getDebugName(tower)}:{reason}`
+	local now = os.clock()
+	if not debugEnabled and debugWarningTimes[key] and now - debugWarningTimes[key] < 5 then
+		return
+	end
+	debugWarningTimes[key] = now
+
+	warn(DEBUG_PREFIX, reason, "tower", getDebugName(tower), "target", getDebugName(target), details or "")
+end
+
 local function waitForDamageDelay(delayTime)
 	if typeof(delayTime) ~= "number" or delayTime <= 0 then
 		return
@@ -62,6 +128,22 @@ end
 
 module.TakeDamage = require(script.DealDamage)
 
+local function safeTakeDamage(humanoid: Humanoid?, tower: Model, damage: number, context: string)
+	if not humanoid or not humanoid.Parent then
+		debugDamage(tower, nil, `missing humanoid ({context})`, nil, false)
+		return false
+	end
+
+	local target = humanoid.Parent
+	local ok, result = pcall(module.TakeDamage, humanoid, tower, damage)
+	if not ok then
+		debugDamage(tower, target, `TakeDamage error ({context})`, result, true)
+		return false
+	end
+
+	return result ~= false
+end
+
 module.AOE = function(newTower:Model, damage:number)
 	local multiplier = 0
 	local config = newTower.Config
@@ -75,20 +157,26 @@ module.AOE = function(newTower:Model, damage:number)
 		targetMobs = workspace.Mobs:GetChildren()
 	end
 
+	local hitCount = 0
+
 	for i, target2 in targetMobs do
 		pcall(function()
 			if newTower:FindFirstChild("HumanoidRootPart") then
 				local distance = (newTower.HumanoidRootPart.Position - target2.HumanoidRootPart.Position).Magnitude
 				if distance < TowerInfo.GetRange(newTower) then
 					if target2:FindFirstChild("Type").Value == newTower.Config:FindFirstChild("Type").Value or newTower.Config:FindFirstChild("Type").Value == "Hybrid" then
-
-						module.TakeDamage(target2.Humanoid,newTower,damage)
+						local targetHumanoid = target2:FindFirstChildOfClass("Humanoid")
+						if safeTakeDamage(targetHumanoid,newTower,damage,"AOE") then
+							hitCount += 1
+						end
 						statusEffects(config,target2)
 					end
 				end
 			end
 		end)
 	end
+
+	return hitCount
 end
 
 module.Splash = function(newTower:Model, targetCFrame, damage:number)
@@ -100,6 +188,7 @@ module.Splash = function(newTower:Model, targetCFrame, damage:number)
 	if newTower.Config.AOEType.Value == "Splash" then
 		local team = newTower:GetAttribute('Team')
 		local targetMobs = nil
+		local hitCount = 0
 
 		if team then
 			targetMobs = workspace[team .. 'Mobs']:GetChildren()
@@ -120,13 +209,20 @@ module.Splash = function(newTower:Model, targetCFrame, damage:number)
 					local targetType = target2:FindFirstChild("Type")
 					local towerType = newTower.Config:FindFirstChild("Type")
 					if targetType and towerType and (targetType.Value == towerType.Value or towerType.Value == "Hybrid") then
-						module.TakeDamage(target2.Humanoid,newTower,damage)
+						local targetHumanoid = target2:FindFirstChildOfClass("Humanoid")
+						if safeTakeDamage(targetHumanoid,newTower,damage,"Splash") then
+							hitCount += 1
+						end
 						statusEffects(config,target2)
 					end
 				end
 			end
 		end
+
+		return hitCount
 	end
+
+	return 0
 end
 
 module.ConeAOE = function(mainPart:BasePart,tower:Model,aoesize:number,damage:number,priorityTarget:Model?)
@@ -138,14 +234,10 @@ module.ConeAOE = function(mainPart:BasePart,tower:Model,aoesize:number,damage:nu
 	angle = aoesize or tower.Config.AOESize.Value
 	local damage = damage or TowerInfo.GetDamage(tower)
 	local range = 10
-	--local rangemultiplier = 1
 	local coneAngle = 1-((angle/90)/2)
 	local enemies = {}
-	local closestEnemies = {}
 	range = TowerInfo.GetRange(tower)
 
-	--local totalrange = config.Range*(CosmicCrusaderBuff+rangemultiplier)
-	--local range = totalrange
 	local team = tower:GetAttribute('Team')
 	local targetMobs = nil
 
@@ -156,50 +248,56 @@ module.ConeAOE = function(mainPart:BasePart,tower:Model,aoesize:number,damage:nu
 	end
 
 	local hitCount = 0
+	local origin = mainPart.Position
+	local priorityRoot = priorityTarget and priorityTarget:FindFirstChild("HumanoidRootPart")
+	local forward = mainPart.CFrame.LookVector
+
+	if priorityRoot then
+		local targetDirection = Vector3.new(priorityRoot.Position.X - origin.X, 0, priorityRoot.Position.Z - origin.Z)
+		if targetDirection.Magnitude > 0.001 then
+			forward = targetDirection.Unit
+		end
+	end
+
+	forward = Vector3.new(forward.X, 0, forward.Z)
+	if forward.Magnitude <= 0.001 then
+		return 0
+	end
+	forward = forward.Unit
+
+	local halfAngle = math.acos(math.clamp(coneAngle, -1, 1))
+	local minimumPathHalfWidth = math.max((angle or 0) * 0.5, 1)
 
 	for i, v in targetMobs do
 		if v:IsA("Model") and v:FindFirstChild('HumanoidRootPart') then
-			if (v.HumanoidRootPart.Position - mainPart.Position).magnitude < range then
-				local TowerToEnemy = (v.HumanoidRootPart.Position - mainPart.Position).Unit
-				local LookV = mainPart.CFrame.LookVector
-
-				local Product = TowerToEnemy:Dot(LookV)
-				if Product >= coneAngle then
+			local offset = Vector3.new(v.HumanoidRootPart.Position.X - origin.X, 0, v.HumanoidRootPart.Position.Z - origin.Z)
+			local forwardDistance = offset:Dot(forward)
+			if forwardDistance >= 0 and forwardDistance <= range then
+				local lateralDistance = (offset - (forward * forwardDistance)).Magnitude
+				local coneHalfWidth = math.tan(halfAngle) * forwardDistance
+				local allowedHalfWidth = math.max(coneHalfWidth, minimumPathHalfWidth)
+				if lateralDistance <= allowedHalfWidth then
 					table.insert(enemies,v)
 				end
 			end
 		end
 	end
-	for o=1,#enemies do
-		if #enemies > 0 then
-			local enemy = nil
-			local distance = math.huge
-			for i, v in enemies do
-				if (v.HumanoidRootPart.Position - mainPart.Position).magnitude < distance then
-					enemy = v
-					distance = (v.HumanoidRootPart.Position - mainPart.Position).magnitude
-				end
-			end
-			if enemy then
-				table.remove(enemies,table.find(enemies,enemy))
-				table.insert(closestEnemies,enemy)
-			end
-		end
-	end
-	for i, v in closestEnemies do
+
+	for i, v in enemies do
 		if v:FindFirstChild("Type") then
 			local targetType = v:FindFirstChild("Type")
 			local towerType = tower.Config:FindFirstChild("Type")
 			if targetType and towerType and (targetType.Value == towerType.Value or towerType.Value == "Hybrid") then
-				hitCount += 1
-				module.TakeDamage(v.Humanoid,tower,damage)
+				local targetHumanoid = v:FindFirstChildOfClass("Humanoid")
+				if safeTakeDamage(targetHumanoid,tower,damage,"Cone") then
+					hitCount += 1
+				end
 			end
 		end
 	end
 
 	if hitCount == 0 and priorityTarget then
 		local priorityHumanoid = priorityTarget:FindFirstChildOfClass("Humanoid")
-		local priorityRoot = priorityTarget:FindFirstChild("HumanoidRootPart")
 		local targetType = priorityTarget:FindFirstChild("Type")
 		local towerType = tower.Config:FindFirstChild("Type")
 		local rangePart = tower:FindFirstChild("HumanoidRootPart") or mainPart
@@ -207,8 +305,9 @@ module.ConeAOE = function(mainPart:BasePart,tower:Model,aoesize:number,damage:nu
 		local validType = targetType and towerType and (targetType.Value == towerType.Value or towerType.Value == "Hybrid")
 
 		if priorityHumanoid and priorityRoot and distance <= range and validType then
-			hitCount += 1
-			module.TakeDamage(priorityHumanoid,tower,damage)
+			if safeTakeDamage(priorityHumanoid,tower,damage,"ConeFallback") then
+				hitCount += 1
+			end
 		end
 	end
 
@@ -400,34 +499,77 @@ end
 
 module.DamageFunction = function(tower:Model,target:Model)
 	if not tower or not tower.Parent then
-		return
+		debugDamage(tower, target, "tower missing before damage", nil, false)
+		return false
 	end
 
 	local config = tower:FindFirstChild("Config")
 	if not config then
-		return
+		debugDamage(tower, target, "tower missing Config before damage", nil, true)
+		return false
 	end
 
 	local upgradeValue = config:FindFirstChild("Upgrades")
 	local unitUpgrades = upgradesModule[tower.Name]
 	local upgradeStats = unitUpgrades and unitUpgrades.Upgrades and upgradeValue and unitUpgrades.Upgrades[upgradeValue.Value]
-	if not upgradeStats then
-		return
-	end
-
-	local damage = TowerInfo.GetDamage(tower, target)
 	local targetHumanoid = target and target:FindFirstChildOfClass("Humanoid")
 	local targetRoot = target and target:FindFirstChild("HumanoidRootPart")
 
-	local function damageTarget()
-		if targetHumanoid then
-			module.TakeDamage(targetHumanoid, tower, damage)
+	if not targetHumanoid then
+		debugDamage(tower, target, "target missing Humanoid before damage", nil, false)
+		return false
+	end
+
+	local function getFallbackDamage()
+		local damageValue = config:FindFirstChild("Damage")
+		if damageValue and typeof(damageValue.Value) == "number" then
+			return damageValue.Value
 		end
+
+		return 0
+	end
+
+	local ok, damageOrError = pcall(TowerInfo.GetDamage, tower, target)
+	local damage = if ok then damageOrError else getFallbackDamage()
+	if not ok then
+		debugDamage(tower, target, "GetDamage error, using Config.Damage fallback", damageOrError, true)
+	end
+
+	if typeof(damage) ~= "number" then
+		debugDamage(tower, target, "damage was not a number, using Config.Damage fallback", damage, true)
+		damage = getFallbackDamage()
+	end
+
+	if not upgradeStats then
+		debugDamage(tower, target, "missing upgrade stats, applying direct damage fallback", tower.Name, true)
+		safeTakeDamage(targetHumanoid, tower, damage, "MissingUpgradeStats")
+		return false
+	end
+
+	local function damageTarget()
+		return safeTakeDamage(targetHumanoid, tower, damage, "Direct")
+	end
+
+	local function runDamageStep(context: string, stepDamage: number, callback)
+		local ok, result = pcall(callback)
+		if not ok then
+			debugDamage(tower, target, `{context} damage step failed, using direct fallback`, result, true)
+			safeTakeDamage(targetHumanoid, tower, stepDamage, `{context}Fallback`)
+			return false
+		end
+
+		if typeof(result) == "number" and result <= 0 then
+			debugDamage(tower, target, `{context} hit 0 targets, using direct fallback`, nil, true)
+			safeTakeDamage(targetHumanoid, tower, stepDamage, `{context}NoHitFallback`)
+		elseif typeof(result) == "number" and isDamageDebugEnabled() then
+			debugDamage(tower, target, `{context} hit {result} targets`, nil, false)
+		end
+
+		return result
 	end
 
 	if upgradeStats.Type == "Spawner" then
-		damageTarget()
-		return
+		return damageTarget()
 	end
 
 	local towerRoot = tower:FindFirstChild("HumanoidRootPart")
@@ -453,27 +595,29 @@ module.DamageFunction = function(tower:Model,target:Model)
 
 	local delays = upgradeStats.MultiDamageDelays
 	local delayCount = if typeof(delays) == "table" then #delays else 0
-	local aoeType = upgradeStats.AOEType
+	local aoeType = upgradeStats.AOEType or (config:FindFirstChild("AOEType") and config.AOEType.Value)
 
 	if aoeType == "Cone" then
 		local mainPart = tower:FindFirstChild("TowerBasePart") or towerRoot
 		if not mainPart then
-			damageTarget()
-			return
+			return damageTarget()
 		end
 
 		if delayCount > 0 then
 			for i=1, delayCount do
 				waitForDamageDelay(delays[i])
-				module.ConeAOE(mainPart,tower,upgradeStats.AOESize,damage/delayCount,target)
+				runDamageStep("Cone", damage/delayCount, function()
+					return module.ConeAOE(mainPart,tower,upgradeStats.AOESize,damage/delayCount,target)
+				end)
 			end
 		else
-			module.ConeAOE(mainPart,tower,upgradeStats.AOESize,damage,target)
+			runDamageStep("Cone", damage, function()
+				return module.ConeAOE(mainPart,tower,upgradeStats.AOESize,damage,target)
+			end)
 		end
 	elseif aoeType == "Splash" then
 		if not targetRoot then
-			damageTarget()
-			return
+			return damageTarget()
 		end
 
 		if delayCount > 0 then
@@ -487,23 +631,33 @@ module.DamageFunction = function(tower:Model,target:Model)
 					firstHit = false
 				end
 				waitForDamageDelay(delays[i])
-				module.Splash(tower,targetCFrame,damage/delayCount)
+				runDamageStep("Splash", damage/delayCount, function()
+					return module.Splash(tower,targetCFrame,damage/delayCount)
+				end)
 			end
 		else
-			module.Splash(tower,targetRoot.CFrame,damage)
+			runDamageStep("Splash", damage, function()
+				return module.Splash(tower,targetRoot.CFrame,damage)
+			end)
 		end
 	elseif aoeType == "AOE" then
 		if delayCount > 0 then
 			for i=1, delayCount do
 				waitForDamageDelay(delays[i])
-				module.AOE(tower,damage/delayCount)
+				runDamageStep("AOE", damage/delayCount, function()
+					return module.AOE(tower,damage/delayCount)
+				end)
 			end
 		else
-			module.AOE(tower,damage)
+			runDamageStep("AOE", damage, function()
+				return module.AOE(tower,damage)
+			end)
 		end
 	else
-		damageTarget()
+		return damageTarget()
 	end
+
+	return true
 end
 
 

@@ -54,7 +54,23 @@ local AbilityStatus = ReplicatedStorage.States.AbilityStatus
 local UnitGradients = ReplicatedStorage.Borders
 local Click = SoundService.SoundFX.Click
 local requiredSlotLevel = {0, 0, 0, 10, 20, 30}
+local RARITY_STARS = {
+	Rare = 2,
+	Epic = 3,
+	Legendary = 4,
+	Mythical = 5,
+	Supreme = 6,
+	Exclusive = 6,
+	Secret = 6,
+	Unique = 5
+}
+local VALID_PLACEMENT_COLOR = Color3.fromRGB(90, 255, 125)
+local VALID_PLACEMENT_OUTLINE = Color3.fromRGB(216, 255, 156)
+local INVALID_PLACEMENT_COLOR = Color3.fromRGB(255, 74, 74)
+local INVALID_PLACEMENT_OUTLINE = Color3.fromRGB(255, 186, 186)
 local SelectedTowers = {}
+local slotButtonConnections = {}
+local ownedTowerConnections = {}
 -- VARIABLES
 local player = Players.LocalPlayer
 local playerMoney = Players.LocalPlayer:WaitForChild("Money")
@@ -70,6 +86,7 @@ local GlobalGUI = gui.Parent:WaitForChild("GlobalGUI")
 local info = workspace:WaitForChild("Info")
 local Upgrade = playerguix:WaitForChild("NewUI"):WaitForChild("Scout")
 local SkipUI = playerguix:WaitForChild("NewUI"):WaitForChild("Skip")
+local SKIP_CORNER_POSITION = UDim2.new(0.786, 0, 0.34, 0)
 local selectedTower = nil
 local towerToSpawn = nil
 local towerToSpawnValue = nil
@@ -96,17 +113,423 @@ EmitModule.init()
 local function getSlotByIndex(i)
 	return IngameHud.Bottom.Slot:FindFirstChild(tostring(i))
 end
-local function getUnitRarity(unit)
-	local rarity = nil
-	for i, v in ReplicatedStorage.Towers:GetChildren() do
-		if v:IsA("Folder") then
-			if v:FindFirstChild(unit) then
-				rarity = v.Name
-				break
+local function getTemplateFolder()
+	return IngameHud:FindFirstChild("Template")
+end
+local function getSlotTemplateForRarity(rarity)
+	local templateFolder = getTemplateFolder()
+	if not templateFolder then return nil end
+	local searchRarity = rarity
+	if rarity == "Mythical" then
+		searchRarity = "Mythic"
+	end
+	local template = templateFolder:FindFirstChild(searchRarity)
+	if template then
+		return template
+	end
+	local fallbacks = {
+		Secret = "Mythic",
+		Unique = "Mythic",
+		Supreme = "Mythic",
+		Exclusive = "Exclusive"
+	}
+	return templateFolder:FindFirstChild(fallbacks[rarity] or "Rare")
+end
+local function getEquippedTowersBySlot()
+	local equippedTowers = {}
+	for _, tower in player.OwnedTowers:GetChildren() do
+		if tower:GetAttribute("Equipped") ~= true then
+			continue
+		end
+		local slotIndex = tonumber(tower:GetAttribute("EquippedSlot"))
+		if typeof(slotIndex) == "number" and slotIndex >= 1 and slotIndex <= 6 and equippedTowers[slotIndex] == nil then
+			equippedTowers[slotIndex] = tower
+		else
+			for fallbackIndex = 1, 6 do
+				if equippedTowers[fallbackIndex] == nil then
+					equippedTowers[fallbackIndex] = tower
+					break
+				end
 			end
 		end
 	end
+	return equippedTowers
+end
+local SLOT_TEMPLATE_NAME = "SlotGeneratedTemplate"
+local SLOT_EMPTY_TEMPLATE_NAME = "SlotGeneratedClosedTemplate"
+
+local function resetSlotConnection(slot)
+	local connection = slotButtonConnections[slot]
+	if connection then
+		connection:Disconnect()
+		slotButtonConnections[slot] = nil
+	end
+end
+
+local function getSlotLimitText(slot)
+	if not slot then return nil end
+	return slot:FindFirstChild("LimitText", true)
+end
+
+local function getUnitRarity(unit)
+	local rarity = nil
+	for _, v in ReplicatedStorage.Towers:GetChildren() do
+		if v:IsA("Folder") and v:FindFirstChild(unit) then
+			rarity = v.Name
+			break
+		end
+	end
 	return rarity
+end
+
+local function safeDestroyViewport(viewport)
+	if not viewport then
+		return
+	end
+
+	if viewport:IsA("ViewportFrame") and ViewPortModule.DestroyViewport then
+		ViewPortModule.DestroyViewport(viewport)
+		if viewport.Parent then
+			viewport:Destroy()
+		end
+	else
+		viewport:Destroy()
+	end
+end
+
+local function destroyGuiTree(instance)
+	if not instance then
+		return
+	end
+
+	for _, descendant in instance:GetDescendants() do
+		if descendant:IsA("ViewportFrame") then
+			safeDestroyViewport(descendant)
+		end
+	end
+
+	if instance.Parent then
+		instance:Destroy()
+	end
+end
+
+local function clearSlotVisuals(slot)
+	if not slot then return end
+
+	resetSlotConnection(slot)
+
+	-- Mesmo comportamento do UnitsHandler do lobby:
+	-- limpa o visual antigo do slot para o template de raridade substituir o background.
+	-- Preserva só objetos de suporte que não fazem parte do card visual.
+	for _, child in slot:GetChildren() do
+		if child:IsA("GuiObject") and child.Name ~= "LimitText" and child.Name ~= "Backend" then
+			destroyGuiTree(child)
+		end
+	end
+
+	slot:SetAttribute("TowerName", nil)
+
+	local limitText = getSlotLimitText(slot)
+	if limitText then
+		limitText.Visible = false
+	end
+
+	if slot:FindFirstChild("Backend") and slot.Backend:FindFirstChild("valEnabled") then
+		slot.Backend.valEnabled.Value = false
+	end
+end
+
+local function clearViewportContents(viewport)
+	if not viewport or not viewport:IsA("ViewportFrame") then
+		return
+	end
+
+	for _, child in viewport:GetChildren() do
+		if child:IsA("ViewportFrame") then
+			safeDestroyViewport(child)
+		else
+			child:Destroy()
+		end
+	end
+end
+
+local function moveGeneratedViewportIntoExistingViewport(targetViewport, generatedViewport)
+	if not targetViewport or not targetViewport:IsA("ViewportFrame") then
+		return nil
+	end
+	if not generatedViewport or not generatedViewport:IsA("ViewportFrame") then
+		return nil
+	end
+
+	clearViewportContents(targetViewport)
+	targetViewport.BackgroundTransparency = 1
+
+	for _, child in generatedViewport:GetChildren() do
+		child.Parent = targetViewport
+	end
+
+	-- Remove apenas o ViewportFrame temporário criado pelo módulo.
+	-- O resultado fica: Profile > ViewportFrame > WorldModel, sem ViewportFrame dentro de ViewportFrame.
+	safeDestroyViewport(generatedViewport)
+
+	return targetViewport
+end
+
+local function populateSlotViewport(viewportFrame, tower)
+	if not viewportFrame or not viewportFrame:IsA("ViewportFrame") or not tower then
+		return nil
+	end
+
+	local generatedViewport = ViewPortModule.CreateViewPort(tower.Name, tower:GetAttribute("Shiny"), true)
+	if not generatedViewport then
+		return nil
+	end
+
+	return moveGeneratedViewportIntoExistingViewport(viewportFrame, generatedViewport)
+end
+
+local function populateEmptySlotViewport(viewportFrame)
+	if not viewportFrame or not viewportFrame:IsA("ViewportFrame") then
+		return nil
+	end
+
+	local generatedViewport = ViewPortModule.CreateEmptyPort(true)
+	if not generatedViewport then
+		return nil
+	end
+
+	return moveGeneratedViewportIntoExistingViewport(viewportFrame, generatedViewport)
+end
+
+local function getTowerPriceMultiplier(tower)
+	local priceMultiplier = 1
+	local traitName = tower:GetAttribute("Trait")
+
+	if Traits.Traits[traitName] and not info.Versus.Value then
+		local traitData = Traits.Traits[traitName]
+		if traitData.Money then
+			priceMultiplier = 1 - (traitData.Money / 100)
+		end
+	end
+
+	if workspace.Info.ChallengeNumber.Value ~= -1 then
+		local challengeData = ChallengeModule.Data[workspace.Info.ChallengeNumber.Value]
+		if challengeData and challengeData.UnitStats ~= nil then
+			priceMultiplier += (challengeData.UnitStats.Price / 100)
+		end
+	end
+
+	return priceMultiplier
+end
+
+local function setupSlotTemplateClone(template, slot, generatedName)
+	if not template or not slot then
+		return nil
+	end
+
+	local clone = template:Clone()
+	clone.Name = generatedName or SLOT_TEMPLATE_NAME
+	clone:SetAttribute("GeneratedSlotVisual", true)
+	clone.Size = UDim2.fromScale(1, 1)
+	clone.Position = UDim2.fromScale(0.5, 0.5)
+	clone.AnchorPoint = Vector2.new(0.5, 0.5)
+	clone.Visible = true
+	clone.Parent = slot
+
+	return clone
+end
+
+local function getClickTarget(slot, visualRoot)
+	if visualRoot and visualRoot:IsA("GuiButton") then
+		return visualRoot
+	end
+
+	if slot and slot:IsA("GuiButton") then
+		return slot
+	end
+
+	if visualRoot then
+		local descendantButton = visualRoot:FindFirstChildWhichIsA("GuiButton", true)
+		if descendantButton then
+			return descendantButton
+		end
+	end
+
+	return nil
+end
+
+local function clearSlotDisplay(slot, slotIndex)
+	if not slot then return end
+
+	clearSlotVisuals(slot)
+	slot.Visible = true
+
+	local templateFolder = getTemplateFolder()
+	local closedTemplate = templateFolder and templateFolder:FindFirstChild("Closed")
+
+	if closedTemplate then
+		local clone = setupSlotTemplateClone(closedTemplate, slot, SLOT_EMPTY_TEMPLATE_NAME)
+		local profile = clone and clone:FindFirstChild("Profile")
+		local viewportFrame = profile and profile:FindFirstChild("ViewportFrame")
+		if viewportFrame and viewportFrame:IsA("ViewportFrame") then
+			populateEmptySlotViewport(viewportFrame)
+		end
+	else
+		warn("Template Closed não encontrado em IngameHud.Template")
+	end
+
+	if player.PlayerLevel.Value < requiredSlotLevel[slotIndex] then
+		slot:SetAttribute("SlotLocked", true)
+	else
+		slot:SetAttribute("SlotLocked", false)
+	end
+end
+
+local createplacementbox
+local AddPlaceholderTower
+local setPlacementVFXEnabled
+
+local function fillSlotDisplay(slot, tower)
+	if not slot or not tower then return end
+
+	clearSlotVisuals(slot)
+	slot.Visible = true
+
+	local statsTower = upgradesModule[tower.Name]
+	local rarity = (statsTower and statsTower.Rarity) or getUnitRarity(tower.Name) or "Rare"
+	local template = getSlotTemplateForRarity(rarity)
+
+	slot:SetAttribute("TowerName", tower.Name)
+	slot:SetAttribute("SlotLocked", false)
+
+	if not template then
+		warn("Template de raridade não encontrado para o slot:", rarity, tower.Name)
+		return
+	end
+
+	-- Copia o background/card da pasta IngameHud.Template, igual ao UnitsHandler do lobby.
+	local visualRoot = setupSlotTemplateClone(template, slot, SLOT_TEMPLATE_NAME)
+	if not visualRoot then
+		return
+	end
+
+	local clickTarget = getClickTarget(slot, visualRoot)
+
+	local profile = visualRoot:FindFirstChild("Profile")
+	if profile then
+		local viewportFrame = profile:FindFirstChild("ViewportFrame")
+		if viewportFrame and viewportFrame:IsA("ViewportFrame") then
+			populateSlotViewport(viewportFrame, tower)
+		else
+			warn("Profile sem ViewportFrame:", profile:GetFullName())
+		end
+
+		local profileText = profile:FindFirstChild("Text")
+		if profileText then
+			local priceLabel = profileText:FindFirstChild("Amount")
+			local nameLabel = profileText:FindFirstChild("NamePerson")
+
+			if priceLabel and statsTower then
+				priceLabel.Text = "$" .. math.round(statsTower.Upgrades[1].Price * getTowerPriceMultiplier(tower))
+			end
+
+			if nameLabel then
+				nameLabel.Text = tower.Name
+			end
+		end
+
+		local starsFrame = profile:FindFirstChild("Stars")
+		if starsFrame then
+			local numStars = RARITY_STARS[rarity] or 2
+			for starIndex = 1, 6 do
+				local starNode = starsFrame:FindFirstChild(tostring(starIndex))
+				if starNode then
+					local emptyStar = starNode:FindFirstChild("Empty")
+					local fullStar = starNode:FindFirstChild("Full")
+					if emptyStar and fullStar then
+						fullStar.Visible = starIndex <= numStars
+						emptyStar.Visible = starIndex > numStars
+					end
+				end
+			end
+		end
+	else
+		warn("Template sem Profile:", visualRoot:GetFullName())
+	end
+
+	local levelFrame = visualRoot:FindFirstChild("Lvl")
+	if levelFrame then
+		local levelText = levelFrame:FindFirstChild("Text")
+		local levelLabel = levelText and levelText:FindFirstChild("Amount")
+		if levelLabel then
+			levelLabel.Text = tostring(info.Versus.Value and 1 or tower:GetAttribute("Level") or 1)
+		end
+	end
+
+	if clickTarget and clickTarget:IsA("GuiButton") then
+		slotButtonConnections[slot] = clickTarget.Activated:Connect(function()
+			local allowedToSpawn = requestTowerFunction:InvokeServer(tower)
+			if allowedToSpawn then
+				createplacementbox()
+				towerToSpawnValue = tower
+				AddPlaceholderTower(tower.Name, tower)
+			end
+		end)
+	else
+		warn("Slot sem GuiButton para clique:", slot:GetFullName())
+	end
+end
+local refreshEquippedSlots
+local function disconnectOwnedTowerConnections(tower)
+	local connections = ownedTowerConnections[tower]
+	if not connections then
+		return
+	end
+	for _, connection in connections do
+		connection:Disconnect()
+	end
+	ownedTowerConnections[tower] = nil
+end
+local function watchOwnedTower(tower)
+	if ownedTowerConnections[tower] then
+		return
+	end
+	ownedTowerConnections[tower] = {
+		tower:GetAttributeChangedSignal("Equipped"):Connect(function()
+			refreshEquippedSlots()
+		end),
+		tower:GetAttributeChangedSignal("EquippedSlot"):Connect(function()
+			refreshEquippedSlots()
+		end),
+		tower:GetAttributeChangedSignal("Level"):Connect(function()
+			refreshEquippedSlots()
+		end),
+		tower:GetAttributeChangedSignal("Trait"):Connect(function()
+			refreshEquippedSlots()
+		end),
+		tower:GetAttributeChangedSignal("Shiny"):Connect(function()
+			refreshEquippedSlots()
+		end),
+		tower:GetPropertyChangedSignal("Name"):Connect(function()
+			refreshEquippedSlots()
+		end)
+	}
+end
+refreshEquippedSlots = function()
+	local equippedTowers = getEquippedTowersBySlot()
+	table.clear(SelectedTowers)
+	for i = 1, 6 do
+		local tower = equippedTowers[i]
+		SelectedTowers[i] = tower
+		local slot = getSlotByIndex(i)
+		if slot then
+			if tower then
+				fillSlotDisplay(slot, tower)
+			else
+				clearSlotDisplay(slot, i)
+			end
+		end
+	end
 end
 local function convertNum(ELO)
 	return ELO % 100
@@ -167,7 +590,43 @@ local function MouseRaycast(model)
 	end
 	return raycastResult
 end
-local function createplacementbox()
+local function isPlacementResultValid(result: RaycastResult?, tower: Model?)
+	if not result or not result.Instance or not tower then
+		return false
+	end
+
+	local parent = result.Instance.Parent
+	local parentName = parent and parent.Name
+	if parentName == "GroundPlace" or (player.Team and parentName == player.Team.Name .. "GroundPlace") then
+		return true
+	end
+
+	return parentName == "AirPlace" and upgradesModule[tower.Name].Upgrades[1].Type == "Air"
+end
+
+local function buildPlacementColorSequence(primaryColor: Color3, secondaryColor: Color3)
+	return ColorSequence.new{
+		ColorSequenceKeypoint.new(0, primaryColor),
+		ColorSequenceKeypoint.new(0.649, primaryColor),
+		ColorSequenceKeypoint.new(1, secondaryColor)
+	}
+end
+
+local function getOrCreatePlacementHighlight(tower: Model)
+	local highlight = tower:FindFirstChild("PlacementPreviewHighlight")
+	if highlight and highlight:IsA("Highlight") then
+		return highlight
+	end
+
+	highlight = Instance.new("Highlight")
+	highlight.Name = "PlacementPreviewHighlight"
+	highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+	highlight.FillTransparency = 0.55
+	highlight.OutlineTransparency = 0.1
+	highlight.Parent = tower
+	return highlight
+end
+createplacementbox = function()
 	local e = workspace.Towers:GetChildren()
 	for i, tower in e do
 		if tower:FindFirstChild("PlacementBox") or tower:GetAttribute("Ignore") then continue end
@@ -363,8 +822,7 @@ local function findSlotByTowerName(towerName)
 	for i = 1, 6 do
 		local slot = getSlotByIndex(i)
 		if not slot then continue end
-		local vp = slot.Placeholder:FindFirstChildWhichIsA("ViewportFrame")
-		if vp and vp:FindFirstChild(towerName) then
+		if slot:GetAttribute("TowerName") == towerName then
 			return slot
 		end
 	end
@@ -372,9 +830,10 @@ local function findSlotByTowerName(towerName)
 end
 local function RemovePlaceholderTower()
 	if towerToSpawn then
+		canPlace = false
 		local UnitSlot = findSlotByTowerName(towerToSpawn.Name)
 		if UnitSlot then
-			local limitText = UnitSlot:FindFirstChild("LimitText")
+			local limitText = getSlotLimitText(UnitSlot)
 			if limitText then
 				limitText.Visible = false
 			end
@@ -396,7 +855,7 @@ local function RemovePlaceholderTower()
 		end
 	end
 end
-local function AddPlaceholderTower(name, unit)
+AddPlaceholderTower = function(name, unit)
 	game.Workspace.Camera:ClearAllChildren()
 	local towerExists = GetUnitModel[name]
 	if towerExists then
@@ -411,13 +870,14 @@ local function AddPlaceholderTower(name, unit)
 		end
 		local UnitSlot = findSlotByTowerName(towerToSpawn.Name)
 		if UnitSlot then
-			local limitText = UnitSlot:FindFirstChild("LimitText")
+			local limitText = getSlotLimitText(UnitSlot)
 			if limitText then
 				limitText.Visible = true
 				limitText.Text = counter .. "/" .. Limit
 			end
 		end
 		local result = MouseRaycast(towerToSpawn)
+		local initialCanPlace = isPlacementResultValid(result, towerToSpawn)
 		if result and result.Instance then
 			local height = towerToSpawn:WaitForChild("HumanoidRootPart").Size.Y * 1.5
 			local x = result.Position.X
@@ -446,6 +906,8 @@ local function AddPlaceholderTower(name, unit)
 				PhysicsService:SetPartCollisionGroup(object, "Tower")
 			end
 		end
+		setPlacementVFXEnabled(towerToSpawn, initialCanPlace)
+		canPlace = initialCanPlace
 		if UserInputService.TouchEnabled then
 			script.Parent.PhoneControls.Visible = true
 		else
@@ -843,9 +1305,42 @@ local actions = {
 	Target = TargetFunc,
 	Spectate = SpectateFunc,
 }
-local function setPlacementVFXEnabled(tower: Model, state)
-	if state then
-	else
+setPlacementVFXEnabled = function(tower: Model, state)
+	if not tower then
+		return
+	end
+
+	if tower:GetAttribute("PlacementVFXState") == state then
+		return
+	end
+
+	tower:SetAttribute("PlacementVFXState", state)
+
+	local fillColor = if state then VALID_PLACEMENT_COLOR else INVALID_PLACEMENT_COLOR
+	local outlineColor = if state then VALID_PLACEMENT_OUTLINE else INVALID_PLACEMENT_OUTLINE
+	local colorSequence = buildPlacementColorSequence(fillColor, outlineColor)
+
+	local highlight = getOrCreatePlacementHighlight(tower)
+	highlight.FillColor = fillColor
+	highlight.OutlineColor = outlineColor
+
+	local placementParticles = tower:FindFirstChild("PlacementParticles", true)
+	if placementParticles then
+		local outlineEmitter = placementParticles:FindFirstChild("Outline")
+		if outlineEmitter and outlineEmitter:IsA("ParticleEmitter") then
+			outlineEmitter.Color = colorSequence
+		end
+
+		local rippleEmitter = placementParticles:FindFirstChild("RIPPLE")
+		if rippleEmitter and rippleEmitter:IsA("ParticleEmitter") then
+			rippleEmitter.Color = colorSequence
+		end
+	end
+
+	for _, descendant in workspace.CurrentCamera:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Color = fillColor
+		end
 	end
 end
 local function createHoverHighlight()
@@ -1866,12 +2361,14 @@ local function SetupGameGui()
 		HealthFrame.Visible = true
 		SpeedBtn.Visible = true
 		if VersusHealth then VersusHealth.Visible = false end
-		map:WaitForChild("Base").Humanoid.HealthChanged:Connect(function()
-			HealthFrame.TextHealth.Text = "Health: " .. tostring(map:WaitForChild("Base").Humanoid.Health .. "/" .. map:WaitForChild("Base").Humanoid.MaxHealth)
-			TweenService:Create(HealthFrame.Fill, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.fromScale(math.clamp(map:WaitForChild("Base").Humanoid.Health / map:WaitForChild("Base").Humanoid.MaxHealth, 0, 1), 1)}):Play()
-		end)
-		HealthFrame.TextHealth.Text = "Health: " .. tostring(map:WaitForChild("Base").Humanoid.Health .. "/" .. map:WaitForChild("Base").Humanoid.MaxHealth)
-		TweenService:Create(HealthFrame.Fill, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.fromScale(math.clamp(map:WaitForChild("Base").Humanoid.Health / map:WaitForChild("Base").Humanoid.MaxHealth, 0, 1), 1)}):Play()
+		local BaseHumanoid = map:WaitForChild("Base"):WaitForChild("Humanoid") :: Humanoid
+		local function updateBaseHealth()
+			HealthFrame.TextHealth.Text = "Health: " .. tostring(BaseHumanoid.Health .. "/" .. BaseHumanoid.MaxHealth)
+			TweenService:Create(HealthFrame.Fill, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.fromScale(math.clamp(BaseHumanoid.Health / BaseHumanoid.MaxHealth, 0, 1), 1)}):Play()
+		end
+		BaseHumanoid.HealthChanged:Connect(updateBaseHealth)
+		BaseHumanoid:GetPropertyChangedSignal("MaxHealth"):Connect(updateBaseHealth)
+		updateBaseHealth()
 	else
 		warn("[Game Controller] Awaiting for versus UI to be scripted sir")
 		HealthFrame.Visible = false
@@ -1891,7 +2388,9 @@ local function SetupGameGui()
 				VersusHealth["Blue"].Bar.NumberDisplay.Text = `Health: {BlueHumanoid.Health}/{BlueHumanoid.MaxHealth}`
 			end
 			RedHumanoid.HealthChanged:Connect(updateRedHealth)
+			RedHumanoid:GetPropertyChangedSignal("MaxHealth"):Connect(updateRedHealth)
 			BlueHumanoid.HealthChanged:Connect(updateBlueHealth)
+			BlueHumanoid:GetPropertyChangedSignal("MaxHealth"):Connect(updateBlueHealth)
 			updateRedHealth()
 			updateBlueHealth()
 		end
@@ -1965,150 +2464,7 @@ local function SetupGameGui()
 		end
 	end
 	task.delay(2, function()
-		local EquippedTowers = {}
-		for i, v in player.OwnedTowers:GetChildren() do
-			if v:GetAttribute("Equipped") == true then
-				if table.find(EquippedTowers, v) then continue end
-				table.insert(EquippedTowers, v)
-			end
-		end
-		for i = 1, 6 do
-			local tower = EquippedTowers[i]
-			local slot = getSlotByIndex(i)
-			if not slot then continue end
-			if tower then
-				local rarity = getUnitRarity(tower.Name)
-				if rarity == "Mythical" or rarity == "Secret" then
-					slot:SetAttribute("Spinning", true)
-				else
-					slot:SetAttribute("Spinning", false)
-				end
-				local UnitRarity = upgradesModule[tower.Name].Rarity
-				slot.Visible = true
-				print(tower, rarity)
-				local gradientRarity = ReplicatedStorage.Borders:FindFirstChild(rarity)
-				if gradientRarity then
-					if slot:FindFirstChild("Bg") then
-						if slot.Bg:FindFirstChild("UIGradient") then
-							slot.Bg.UIGradient.Color = gradientRarity.Color
-						else
-							slot.Bg.BackgroundColor3 = gradientRarity.Color.Keypoints[1].Value
-						end
-						local bgStroke = slot.Bg:FindFirstChildWhichIsA("UIStroke")
-						if bgStroke then
-							if bgStroke:FindFirstChild("UIGradient") then
-								bgStroke.UIGradient.Color = gradientRarity.Color
-							else
-								bgStroke.Color = gradientRarity.Color.Keypoints[1].Value
-							end
-						end
-					end
-					local slotStroke = slot:FindFirstChildWhichIsA("UIStroke")
-					if slotStroke then
-						if slotStroke:FindFirstChild("UIGradient") then
-							slotStroke.UIGradient.Color = gradientRarity.Color
-						else
-							slotStroke.Color = gradientRarity.Color.Keypoints[1].Value
-						end
-					end
-				end
-				if tower:GetAttribute("Trait") == "" or info.Versus.Value then
-					if slot:FindFirstChild("TraitIcon") then
-						slot.TraitIcon.Visible = false
-					end
-				else
-					if slot:FindFirstChild("TraitIcon") then
-						slot.TraitIcon.Visible = true
-						slot.TraitIcon.Image = TraitsModule.Traits[tower:GetAttribute("Trait")].ImageID
-						slot.TraitIcon.UIGradient.Color = TraitsModule.TraitColors[TraitsModule.Traits[tower:GetAttribute("Trait")].Rarity].Gradient
-						slot.TraitIcon.UIGradient.Rotation = TraitsModule.TraitColors[TraitsModule.Traits[tower:GetAttribute("Trait")].Rarity].GradientAngle
-					end
-				end
-				local priceMultiplier = 1
-				if Traits.Traits[tower:GetAttribute("Trait")] and not info.Versus.Value then
-					if Traits.Traits[tower:GetAttribute("Trait")]["Money"] then
-						priceMultiplier = (1 - (Traits.Traits[tower:GetAttribute("Trait")]["Money"] / 100))
-					end
-				end
-				if workspace.Info.ChallengeNumber.Value ~= -1 then
-					local challengeData = ChallengeModule.Data[workspace.Info.ChallengeNumber.Value]
-					if challengeData and challengeData.UnitStats ~= nil then
-						priceMultiplier += (challengeData.UnitStats.Price / 100)
-					end
-				end
-				slot.AmountCost.Text = math.round(upgradesModule[tower.Name].Upgrades[1].Price * priceMultiplier) .. "$"
-				if info.Versus.Value then
-					tower:SetAttribute("Level", 1)
-				end
-				local nameLabel = slot:FindFirstChild("Name")
-				if nameLabel then
-					nameLabel.Text = tower.Name
-				end
-				for _, child in slot.Placeholder:GetChildren() do
-					if child:IsA("ViewportFrame") then child:Destroy() end
-				end
-				local vp = ViewPortModule.CreateViewPort(tower.Name, tower:GetAttribute("Shiny"))
-				vp.Size = UDim2.fromScale(1, 1)
-				vp.Name = tower.Name
-				vp.Parent = slot.Placeholder
-				slot.Activated:Connect(function()
-					local allowedToSpawn = requestTowerFunction:InvokeServer(tower)
-					if allowedToSpawn then
-						createplacementbox()
-						towerToSpawnValue = tower
-						AddPlaceholderTower(tower.Name, tower)
-					end
-				end)
-			else
-				if slot:FindFirstChild("Backend") and slot.Backend:FindFirstChild("valEnabled") then
-					slot.Backend.valEnabled.Value = false
-				end
-				local gray = Color3.fromRGB(100, 100, 100)
-				local graySequence = ColorSequence.new{ColorSequenceKeypoint.new(0, gray), ColorSequenceKeypoint.new(1, gray)}
-				if slot:FindFirstChild("Bg") then
-					if slot.Bg:FindFirstChild("UIGradient") then
-						slot.Bg.UIGradient.Color = graySequence
-					else
-						slot.Bg.BackgroundColor3 = gray
-					end
-					local bgStroke = slot.Bg:FindFirstChildWhichIsA("UIStroke")
-					if bgStroke then
-						if bgStroke:FindFirstChild("UIGradient") then
-							bgStroke.UIGradient.Color = graySequence
-						else
-							bgStroke.Color = gray
-						end
-					end
-				end
-				local slotStroke = slot:FindFirstChildWhichIsA("UIStroke")
-				if slotStroke then
-					if slotStroke:FindFirstChild("UIGradient") then
-						slotStroke.UIGradient.Color = graySequence
-					else
-						slotStroke.Color = gray
-					end
-				end
-				if slot:FindFirstChild("TraitIcon") then
-					slot.TraitIcon.Visible = false
-				end
-				if slot:FindFirstChild("Locked") then
-					slot.Locked.Visible = false
-				end
-				local nameLabel = slot:FindFirstChild("Name")
-				if nameLabel then nameLabel.Text = "" end
-				slot.AmountCost.Text = ""
-				if player.PlayerLevel.Value < requiredSlotLevel[i] then
-					if slot:FindFirstChild("Locked") then
-						slot.Locked.Visible = true
-					end
-				end
-				local Empty = ViewPortModule.CreateEmptyPort()
-				local existingVP = slot.Placeholder:FindFirstChildWhichIsA("ViewportFrame")
-				if not existingVP then
-					Empty:Clone().Parent = slot.Placeholder
-				end
-			end
-		end
+		refreshEquippedSlots()
 	end)
 end
 local function LoadGui()
@@ -2135,9 +2491,22 @@ local function LoadGui()
 end
 -- INIT
 repeat task.wait() until player:FindFirstChild("DataLoaded")
+for _, ownedTower in player.OwnedTowers:GetChildren() do
+	watchOwnedTower(ownedTower)
+end
+player.OwnedTowers.ChildAdded:Connect(function(ownedTower)
+	watchOwnedTower(ownedTower)
+	refreshEquippedSlots()
+end)
+player.OwnedTowers.ChildRemoved:Connect(function(ownedTower)
+	disconnectOwnedTowerConnections(ownedTower)
+	refreshEquippedSlots()
+end)
+refreshEquippedSlots()
 updateAbilityStatus()
 AbilityStatus.Changed:Connect(updateAbilityStatus)
 player.PlayerLevel.Changed:Connect(UpdatePlayerLevelBar)
+player.PlayerLevel.Changed:Connect(refreshEquippedSlots)
 player.PlayerExp.Changed:Connect(UpdatePlayerLevelBar)
 updateWaveDisplays(info.Wave.Value)
 info.Wave.Changed:Connect(updateWaveDisplays)
@@ -2151,6 +2520,33 @@ UserInputService.InputBegan:Connect(onKeyBindPress)
 SkipUI.Button.Yes.Btn.Activated:Connect(function()
 	UIHandler.PlaySound("Skip")
 	if not SkipUI.Visible then return end
+
+	local skipContext = SkipUI:GetAttribute("InteractionContext")
+	if skipContext == "WaveSkip" then
+		local result = ReplicatedStorage.Functions.VoteForSkip:InvokeServer("ManualButton")
+		if result == true then
+			task.spawn(function()
+				TweenService:Create(SkipUI, TweenInfo.new(0.5, Enum.EasingStyle.Exponential), {Position = UDim2.new(0.438, 0, -0.5, 0)}):Play()
+				task.wait(0.2)
+				SkipUI.Visible = false
+			end)
+		elseif typeof(result) == "string" then
+			if result == "Cannot skip on the final wave!" then
+				task.spawn(function()
+					TweenService:Create(SkipUI, TweenInfo.new(0.5, Enum.EasingStyle.Exponential), {Position = UDim2.new(0.438, 0, -0.5, 0)}):Play()
+					task.wait(0.2)
+					SkipUI.Visible = false
+				end)
+			end
+			_G.Message(result, Color3.new(0.831373, 0, 0))
+		end
+		return
+	end
+
+	if skipContext ~= "StartGame" then
+		return
+	end
+
 	events.Client.VoteStartGame:FireServer()
 	task.spawn(function()
 		TweenService:Create(SkipUI, TweenInfo.new(0.5, Enum.EasingStyle.Exponential), {Position = UDim2.new(0.438, 0, -0.5, 0)}):Play()
@@ -2159,25 +2555,55 @@ SkipUI.Button.Yes.Btn.Activated:Connect(function()
 	end)
 end)
 SkipUI.Button.No.Btn.Activated:Connect(function()
+	SkipUI:SetAttribute("InteractionContext", nil)
 	TweenService:Create(SkipUI, TweenInfo.new(0.5, Enum.EasingStyle.Exponential), {Position = UDim2.new(0.438, 0, -0.5, 0)}):Play()
 	task.wait(0.2)
 	SkipUI.Visible = false
 end)
 local function updateSpeedText()
+	if workspace.Info.SpeedCD.Value then
+		return
+	end
+
 	local gamSped = workspace.Info.GameSpeed
 	SpeedButton.TextSpeed.Text = "Speed: " .. gamSped.Value .. "x"
 end
+
+local cooldownToken = 0
 local function startCooldown()
+	cooldownToken += 1
+	local token = cooldownToken
 	SpeedButton.Interactable = false
-	for i = 3.2, 0, -0.1 do
-		SpeedButton.TextSpeed.Text = string.format("Cooldown: %.1f", i)
+
+	local remaining = 3.2
+	while workspace.Info.SpeedCD.Value and token == cooldownToken do
+		SpeedButton.TextSpeed.Text = string.format("Cooldown: %.1f", math.max(remaining, 0))
 		task.wait(0.1)
+		remaining -= 0.1
 	end
-	SpeedButton.Interactable = true
-	updateSpeedText()
+
+	if token == cooldownToken then
+		SpeedButton.Interactable = true
+		updateSpeedText()
+	end
 end
+
 updateSpeedText()
-workspace.Info.GameSpeed.Changed:Connect(startCooldown)
+workspace.Info.GameSpeed.Changed:Connect(updateSpeedText)
+workspace.Info.SpeedCD.Changed:Connect(function()
+	if workspace.Info.SpeedCD.Value then
+		task.spawn(startCooldown)
+	else
+		cooldownToken += 1
+		SpeedButton.Interactable = true
+		updateSpeedText()
+	end
+end)
+
+if workspace.Info.SpeedCD.Value then
+	task.spawn(startCooldown)
+end
+
 SpeedButton.Activated:Connect(function()
 	if workspace.Info.SpeedCD.Value == true then
 		_G.Message("Please Wait Before Changing Speed!", Color3.fromRGB(255, 0, 0))
@@ -2282,14 +2708,16 @@ coroutine.resume(arrowCoroutine)
 _G.Timestarted = tick()
 events.Client.VoteStartGame.OnClientEvent:Connect(function(secondsLeft, YesVote, lastCall, UpdatedArgument)
 	if UpdatedArgument then
+		SkipUI:SetAttribute("InteractionContext", "StartGame")
+		SkipUI.Position = SKIP_CORNER_POSITION
 		SkipUI.Visible = true
-		TweenService:Create(SkipUI, TweenInfo.new(0.5, Enum.EasingStyle.Exponential), {Position = UDim2.fromScale(0.5, 0.35)}):Play()
 		return
 	end
 	if lastCall then
 		coroutine.close(arrowCoroutine)
 		_G.Message("Game has started!", Color3.fromRGB(255, 170, 0), nil, true)
 		UIHandler.PlaySound("WaveComplete")
+		SkipUI:SetAttribute("InteractionContext", nil)
 		task.spawn(function()
 			TweenService:Create(SkipUI, TweenInfo.new(0.5, Enum.EasingStyle.Exponential), {Position = UDim2.fromScale(0.5, -0.5)}):Play()
 			task.wait(0.2)
@@ -2341,13 +2769,6 @@ function InputBegan(input, processed)
 		end
 		toggleTowerInfo()
 	end
-	local Player = Players.LocalPlayer
-	for i, v in Player.OwnedTowers:GetChildren() do
-		if v:GetAttribute("Equipped") == true then
-			if table.find(SelectedTowers, v) then continue end
-			table.insert(SelectedTowers, v)
-		end
-	end
 	local keys = {Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five, Enum.KeyCode.Six}
 	for i, v in keys do
 		if input.KeyCode == v then
@@ -2386,17 +2807,8 @@ RunService.Heartbeat:Connect(function()
 		lastValidResult = result
 		if towerToSpawn then
 			hoveredInstance = nil
-			local parentName = result.Instance.Parent.Name
-			if parentName == "GroundPlace" or (player.Team and parentName == player.Team.Name .. "GroundPlace") then
-				setPlacementVFXEnabled(towerToSpawn, true)
-				canPlace = true
-			elseif parentName == "AirPlace" and upgradesModule[towerToSpawn.Name].Upgrades[1].Type == "Air" then
-				setPlacementVFXEnabled(towerToSpawn, true)
-				canPlace = true
-			else
-				setPlacementVFXEnabled(towerToSpawn, false)
-				canPlace = false
-			end
+			canPlace = isPlacementResultValid(result, towerToSpawn)
+			setPlacementVFXEnabled(towerToSpawn, canPlace)
 			local height = towerToSpawn:WaitForChild("HumanoidRootPart").Size.Y * 1.5
 			local x = result.Position.X
 			local y = result.Position.Y + height

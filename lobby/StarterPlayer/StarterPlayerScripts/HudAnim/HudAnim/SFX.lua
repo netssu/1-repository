@@ -2,7 +2,7 @@
 local SoundService = game:GetService("SoundService")
 
 -----------------//DEPENDENCIES
-local SoundController = require(script.Parent.Parent.Parent.Utility.SoundUtility)
+--local SoundController = require(script.Parent.Parent.Parent.Utility.SoundUtility)
 
 
 ------------------//VARIABLES
@@ -39,7 +39,7 @@ function SFX.set_defaults(opts)
 end
 
 function SFX.play_for(inst, key)
-	if SoundController.IsSFXMuted() then return end
+	--if SoundController.IsSFXMuted() then return end
 	
 	local id = inst:GetAttribute(key) or defaults[key] or ""
 	if id == "" or id == "rbxassetid://0" then return end

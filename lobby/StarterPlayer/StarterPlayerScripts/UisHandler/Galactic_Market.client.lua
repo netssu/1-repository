@@ -287,7 +287,6 @@ local function Detection()
 	local timeFormatted = string.format("%d:%02d", minutes, seconds)
 	local fillScale = math.clamp(secondsDifference / 1800, 0, 1)
 
-	-- O problema estava na verificação "GalacticMarketGUI.Enabled". Como é um frame, o correto é ".Visible".
 	if GalacticMarketGUI.Visible then
 		local targetColor = isLeaving and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(255, 0, 4)
 

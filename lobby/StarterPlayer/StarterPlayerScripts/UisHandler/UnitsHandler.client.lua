@@ -27,6 +27,17 @@ local Functions = require(ReplicatedStorage.Modules.Functions)
 local layoutorders = {"Exclusive","Unique","Secret","Mythical","Legendary","Epic","Rare"}
 local requiredSlotLevel = {0,0,0,10,20,30}
 
+local RARITY_STARS = {
+	Rare = 2,
+	Epic = 3,
+	Legendary = 4,
+	Mythical = 5,
+	Supreme = 6,
+	Exclusive = 6,
+	Secret = 6,
+	Unique = 5
+}
+
 -- VARIABLES
 _G.traitTowerSelection = false
 _G.traitTowerSelectTower = nil
@@ -71,8 +82,6 @@ local UnitNameText = CraftFrame:WaitForChild("UnitName")
 
 local ItemsTab = MainFrame:WaitForChild("ItemsTab")
 local ContentGrid = ItemsTab:WaitForChild("Content")
-local TemplateButton = ContentGrid:WaitForChild("1")
-TemplateButton.Visible = false 
 
 local TopLeft = MainFrame:WaitForChild("TopLeft")
 local SearchBox = TopLeft:WaitForChild("Search").TextBox
@@ -175,61 +184,46 @@ local filteringType = {
 -- FUNCTIONS
 local function getIngameHudBottom()
 	local ingameHud = NewUI:FindFirstChild("IngameHud")
-	local bottom = ingameHud and ingameHud:FindFirstChild("Bottom")
-
-	if bottom and bottom:IsA("GuiObject") then
-		return bottom
-	end
-
-	return nil
-end
-
-local function getLegacySlotsContainer()
-	local slotsGui = GameGui and GameGui:FindFirstChild("Slots")
-	local slotsRoot = slotsGui and slotsGui:FindFirstChild("Slots")
-	local unitsBar = slotsRoot and slotsRoot:FindFirstChild("Units_Bar")
-
-	if unitsBar and unitsBar:IsA("GuiObject") then
-		return unitsBar
-	end
-
-	return nil
+	return ingameHud and ingameHud:FindFirstChild("Bottom")
 end
 
 local function getSlotsContainer()
 	local bottom = getIngameHudBottom()
-	local slotContainer = bottom and bottom:FindFirstChild("Slot")
-
-	if slotContainer and slotContainer:IsA("GuiObject") then
-		return slotContainer
-	end
-
-	return getLegacySlotsContainer()
+	return bottom and bottom:FindFirstChild("Slot")
 end
 
 local function getSlotByIndex(index)
 	local slotContainer = getSlotsContainer()
 	if not slotContainer then return nil end
+	return slotContainer:FindFirstChild(tostring(index))
+end
 
-	return slotContainer:FindFirstChild(tostring(index)) or slotContainer:FindFirstChild("Unit" .. tostring(index))
+local function getTemplateFolder()
+	local ingameHud = NewUI:FindFirstChild("IngameHud")
+	return ingameHud and ingameHud:FindFirstChild("Template")
+end
+
+local function getSlotTemplateForRarity(rarity)
+	local templateFolder = getTemplateFolder()
+	if not templateFolder then return nil end
+
+	local searchRarity = rarity
+	if rarity == "Mythical" then searchRarity = "Mythic" end
+
+	local template = templateFolder:FindFirstChild(searchRarity)
+	if template then return template end
+
+	local fallbacks = {Secret = "Mythic", Unique = "Mythic", Supreme = "Mythic", Exclusive = "Exclusive"}
+	return templateFolder:FindFirstChild(fallbacks[rarity] or "Rare")
 end
 
 local function resolvePlayerLevelObjects()
 	local bottom = getIngameHudBottom()
 	local levelBar = bottom and bottom:FindFirstChild("LevelBar")
-	local fill = levelBar and levelBar:FindFirstChild("Fill")
-	local text = levelBar and levelBar:FindFirstChild("Text")
-
-	if fill and text then
-		return fill, text
+	if levelBar then
+		return levelBar:FindFirstChild("Fill"), levelBar:FindFirstChild("Text")
 	end
-
-	local legacySlotsContainer = getLegacySlotsContainer()
-	local levelFrame = legacySlotsContainer and legacySlotsContainer.Parent and legacySlotsContainer.Parent:FindFirstChild("Exp_Frame")
-	local legacyFill = levelFrame and levelFrame:FindFirstChild("CanvasGroup") and levelFrame.CanvasGroup:FindFirstChild("Glow")
-	local legacyText = levelFrame and levelFrame:FindFirstChild("Level")
-
-	return legacyFill, legacyText
+	return nil, nil
 end
 
 local function getRarityColor(rarity)
@@ -243,196 +237,103 @@ local function getRarityColor(rarity)
 	return Color3.fromRGB(200, 200, 200)
 end
 
-local function findSlotViewportParent(slot)
-	return slot and (slot:FindFirstChild("Placeholder") or slot:FindFirstChild("Internal"))
-end
-
-local function clearSlotViewport(slot)
-	local viewportParent = findSlotViewportParent(slot)
-	if not viewportParent then return end
-
-	for _, child in pairs(viewportParent:GetChildren()) do
-		if child:IsA("ViewportFrame") then
+local function clearPhysicalSlot(slot)
+	if not slot then return end
+	for _, child in pairs(slot:GetChildren()) do
+		if child:IsA("GuiObject") then
 			child:Destroy()
 		end
 	end
 end
 
-local function getSlotLevelLabel(slot)
-	return slot and slot:FindFirstChild("Unit_Level", true)
-end
-
-local function getSlotNameLabel(slot)
-	return slot and (slot:FindFirstChild("Name") or slot:FindFirstChild("Unit_Name", true))
-end
-
-local function getSlotCostLabel(slot)
-	return slot and (slot:FindFirstChild("AmountCost") or slot:FindFirstChild("Unit_Value", true))
-end
-
-local function getSlotTraitIcon(slot)
-	return slot and slot:FindFirstChild("TraitIcon", true)
-end
-
-local strokeToneProfiles = {
-	["1"] = {
-		saturationMultiplier = 1,
-		valueMultiplier = 136 / 255,
-	},
-	["2"] = {
-		saturationMultiplier = 0.93,
-		valueMultiplier = 43 / 255,
-	},
-	["3"] = {
-		saturationMultiplier = 0.54,
-		valueMultiplier = 65 / 255,
-	},
-}
-
-local function buildStrokeColorSequence(baseSequence, strokeName)
-	local profile = strokeToneProfiles[strokeName]
-	if not profile then
-		return baseSequence
-	end
-
-	local baseColor = baseSequence.Keypoints[1].Value
-	local hue, saturation, value = baseColor:ToHSV()
-	local tonedColor = Color3.fromHSV(
-		hue,
-		math.clamp(saturation * profile.saturationMultiplier, 0, 1),
-		math.clamp(value * profile.valueMultiplier, 0, 1)
-	)
-
-	return ColorSequence.new{
-		ColorSequenceKeypoint.new(0, tonedColor),
-		ColorSequenceKeypoint.new(1, tonedColor),
-	}
-end
-
-local function applyStrokeColor(container, colorSequence)
-	if not container then return end
-
-	for _, child in ipairs(container:GetChildren()) do
-		if child:IsA("UIStroke") then
-			local strokeSequence = buildStrokeColorSequence(colorSequence, child.Name)
-
-			if child:FindFirstChild("UIGradient") then
-				child.UIGradient.Color = strokeSequence
-			else
-				child.Color = strokeSequence.Keypoints[1].Value
-			end
-		end
-	end
-end
-
-local function setSlotGradient(slot, colorSequence)
+local function clearSlotDisplay(slot, index)
 	if not slot then return end
 
-	local bg = slot:FindFirstChild("Bg")
-	if bg then
-		if bg:FindFirstChild("UIGradient") then
-			bg.UIGradient.Color = colorSequence
-		else
-			bg.BackgroundColor3 = colorSequence.Keypoints[1].Value
-		end
-	end
+	clearPhysicalSlot(slot)
 
-	applyStrokeColor(bg, colorSequence)
-	applyStrokeColor(slot, colorSequence)
+	local templateFolder = getTemplateFolder()
+	local closedTemplate = templateFolder and templateFolder:FindFirstChild("Closed")
 
-	local internal = slot:FindFirstChild("Internal")
-	if internal then
-		local glow = internal:FindFirstChild("Glow")
-		if glow and glow:FindFirstChild("UIGradient") then
-			glow.UIGradient.Color = colorSequence
-		end
-
-		local mainFrame = internal:FindFirstChild("Main_Unit_ Frame")
-		if mainFrame and mainFrame:FindFirstChild("UIGradient") then
-			mainFrame.UIGradient.Color = colorSequence
-		end
-	end
-end
-
-local function setSlotText(label, value)
-	if label and label:IsA("TextLabel") then
-		label.Text = value
-	end
-end
-
-local function setSlotGlowVisible(slot, visible)
-	local glow = slot and slot:FindFirstChild("Glow", true)
-	if glow and glow:IsA("GuiObject") then
-		glow.Visible = visible
-	end
-end
-
-local function clearSlotDisplay(slot, index)
-	local gray = Color3.fromRGB(100, 100, 100)
-	local graySequence = ColorSequence.new{
-		ColorSequenceKeypoint.new(0, gray),
-		ColorSequenceKeypoint.new(1, gray),
-	}
-	local lock = slot and slot:FindFirstChild("Locked")
-	local traitIcon = getSlotTraitIcon(slot)
-
-	clearSlotViewport(slot)
-	slot.Visible = true
-	setSlotGradient(slot, graySequence)
-	setSlotGlowVisible(slot, false)
-	setSlotText(getSlotLevelLabel(slot), "")
-	setSlotText(getSlotNameLabel(slot), "")
-	setSlotText(getSlotCostLabel(slot), "")
-
-	if traitIcon then
-		traitIcon.Visible = false
-	end
-
-	if lock then
-		lock.Visible = player.PlayerLevel.Value < requiredSlotLevel[index]
+	if closedTemplate then
+		local clone = closedTemplate:Clone()
+		clone.Size = UDim2.fromScale(1, 1)
+		clone.Position = UDim2.fromScale(0.5, 0.5)
+		clone.AnchorPoint = Vector2.new(0.5, 0.5)
+		clone.Visible = true
+		clone.Parent = slot
 	end
 end
 
 local function fillSlotDisplay(slot, tower)
+	if not slot or not tower then return end
+
+	clearPhysicalSlot(slot)
+
 	local statsTower = UpgradesModule[tower.Name]
-	local viewportParent = findSlotViewportParent(slot)
-	local lock = slot and slot:FindFirstChild("Locked")
-	local traitIcon = getSlotTraitIcon(slot)
+	local rarity = statsTower and statsTower.Rarity or "Rare"
+	local template = getSlotTemplateForRarity(rarity)
 
-	clearSlotViewport(slot)
-	slot.Visible = true
+	if template then
+		local clone = template:Clone()
+		clone.Size = UDim2.fromScale(1, 1)
+		clone.Position = UDim2.fromScale(0.5, 0.5)
+		clone.AnchorPoint = Vector2.new(0.5, 0.5)
+		clone.Visible = true
+		clone.Parent = slot
 
-	if lock then
-		lock.Visible = false
-	end
+		local profile = clone:FindFirstChild("Profile")
+		if profile then
+			local vpFrame = profile:FindFirstChild("ViewportFrame")
+			if vpFrame then
+				for _, v in pairs(vpFrame:GetChildren()) do
+					if v:IsA("ViewportFrame") then v:Destroy() end
+				end
+				local vp = ViewPortModule.CreateViewPort(tower.Name, tower:GetAttribute("Shiny"))
+				if vp then
+					vp.Size = UDim2.fromScale(1, 1)
+					vp.Position = UDim2.fromScale(0.5, 0.5)
+					vp.AnchorPoint = Vector2.new(0.5, 0.5)
+					vp.BackgroundTransparency = 1
+					vp.Name = tower.Name
+					vp.Parent = vpFrame
+				end
+			end
 
-	if traitIcon then
-		traitIcon.Visible = false
-	end
+			local profileText = profile:FindFirstChild("Text")
+			if profileText then
+				local amountLbl = profileText:FindFirstChild("Amount")
+				local nameLbl = profileText:FindFirstChild("NamePerson")
+				if amountLbl and statsTower then amountLbl.Text = "$" .. math.round(statsTower.Upgrades[1].Price) end
+				if nameLbl then nameLbl.Text = tower.Name end
+			end
 
-	setSlotGlowVisible(slot, tower:GetAttribute("Shiny"))
-	setSlotText(getSlotLevelLabel(slot), "Lvl " .. tower:GetAttribute("Level"))
-	setSlotText(getSlotNameLabel(slot), tower.Name)
+			local starsFrame = profile:FindFirstChild("Stars")
+			if starsFrame then
+				local numStars = RARITY_STARS[rarity] or 2
+				for s = 1, 6 do
+					local starNode = starsFrame:FindFirstChild(tostring(s))
+					if starNode then
+						local empty = starNode:FindFirstChild("Empty")
+						local full = starNode:FindFirstChild("Full")
+						if empty and full then
+							full.Visible = (s <= numStars)
+							empty.Visible = (s > numStars)
+						end
+					end
+				end
+			end
+		end
 
-	if statsTower then
-		setSlotText(getSlotCostLabel(slot), math.round(statsTower.Upgrades[1].Price) .. "$")
-
-		local rarity = statsTower.Rarity
-		local gradientRarity = rarity and ReplicatedStorage.Borders:FindFirstChild(rarity)
-		if gradientRarity and gradientRarity:IsA("UIGradient") then
-			setSlotGradient(slot, gradientRarity.Color)
+		local lvlFrame = clone:FindFirstChild("Lvl")
+		if lvlFrame then
+			local lvlTextFrame = lvlFrame:FindFirstChild("Text")
+			if lvlTextFrame then
+				local amountLbl = lvlTextFrame:FindFirstChild("Amount")
+				if amountLbl then amountLbl.Text = tostring(tower:GetAttribute("Level")) end
+			end
 		end
 	else
-		setSlotText(getSlotCostLabel(slot), "")
-	end
-
-	if viewportParent then
-		local vp = ViewPortModule.CreateViewPort(tower.Name, tower:GetAttribute("Shiny"))
-		if viewportParent.Name == "Placeholder" then
-			vp.Size = UDim2.fromScale(1, 1)
-			vp.Name = tower.Name
-		end
-		vp.Parent = viewportParent
+		clearSlotDisplay(slot, tonumber(slot.Name))
 	end
 end
 
@@ -449,6 +350,47 @@ local function getDictionaryLength(dictionary)
 	return count
 end
 
+local function getTowerValueObject(guiObject)
+	if not guiObject then
+		return nil
+	end
+
+	local towerValue = nil
+	for _, child in guiObject:GetChildren() do
+		if child.Name == "TowerValue" and child:IsA("ObjectValue") then
+			towerValue = child
+		end
+	end
+
+	return towerValue
+end
+
+local function setTowerValueObject(guiObject, tower)
+	if not guiObject then
+		return nil
+	end
+
+	local towerValue = nil
+	for _, child in guiObject:GetChildren() do
+		if child.Name == "TowerValue" then
+			if child:IsA("ObjectValue") and not towerValue then
+				towerValue = child
+			else
+				child:Destroy()
+			end
+		end
+	end
+
+	if not towerValue then
+		towerValue = Instance.new("ObjectValue")
+		towerValue.Name = "TowerValue"
+		towerValue.Parent = guiObject
+	end
+
+	towerValue.Value = tower
+	return towerValue
+end
+
 local function compare(arr1, arr2)
 	local arr1Length,arr2Length = getDictionaryLength(arr1),getDictionaryLength(arr2)
 	local higherIndex = math.max(arr1Length,arr2Length)
@@ -459,50 +401,10 @@ local function compare(arr1, arr2)
 	return true
 end
 
-local function removeAllGradients(container)
-	if typeof(container) == "table" then
-		for _, c in pairs(container) do
-			for i, v in pairs(c:GetChildren()) do
-				if v:IsA("UIGradient") then v:Destroy() end
-			end
-		end
-	elseif typeof(container) == "Instance" then
-		for i, v in pairs(container:GetChildren()) do
-			if v:IsA("UIGradient") then v:Destroy() end
-		end
-	end
-end
-
-local function addRarityGradient(container,rarity)
-	local g = ReplicatedStorage.Borders:FindFirstChild(rarity) or ReplicatedStorage.Borders.Rare
-	removeAllGradients(container)
-
-	if typeof(container) == "table" then
-		for _, c in pairs(container) do
-			local gc = g:Clone()
-			gc.Parent = c
-		end
-	elseif typeof(container) == "Instance" then
-		local gc = g:Clone()
-		gc.Parent = container
-	end
-end
-
-local function getUnitRarity(unit)
-	local rarity = nil
-	for i,v in pairs(ReplicatedStorage.Towers:GetChildren()) do
-		if v:IsA('Folder') and v:FindFirstChild(unit) then
-			rarity = v.Name
-			break
-		end
-	end
-	return rarity
-end
-
 local function GetSellPrice()
 	local totalPrice = 0
 	for _,button in pairs(sellButtonList) do
-		local towerVal = button:FindFirstChild("TowerValue")
+		local towerVal = getTowerValueObject(button)
 		if towerVal and towerVal.Value then
 			local rarity = UpgradesModule[towerVal.Value.Name].Rarity
 			local towerPriceValue = SellAndFuseModule.RaritySellPrice[rarity]
@@ -534,9 +436,10 @@ end
 local function changeSelectState(stateChange)
 	local function ShowLockedUnits(bool)
 		for _, ui in pairs(ContentGrid:GetChildren()) do
-			if ui.Name == "1" or not ui:IsA("Frame") then continue end
-			local towerValue = ui:FindFirstChild("TowerValue") and ui.TowerValue.Value
-			if not towerValue then continue end
+			if not ui:IsA("GuiObject") then continue end
+			local tVal = getTowerValueObject(ui)
+			if not tVal or not tVal.Value then continue end
+			local towerValue = tVal.Value
 
 			local lock = ui:FindFirstChild("Shadow") 
 			if lock then
@@ -583,7 +486,7 @@ end
 
 local function updateInventory()
 	for _, v in pairs(ContentGrid:GetChildren()) do
-		if v.Name ~= "1" and v:IsA("Frame") and v:GetAttribute("Select") == true then
+		if v:IsA("GuiObject") and getTowerValueObject(v) and v:GetAttribute("Select") == true then
 			v:SetAttribute("Select", false)
 			break
 		end
@@ -607,8 +510,8 @@ local function updateInventory()
 
 	local ownTowersButton = {}
 	for i, v in pairs(ContentGrid:GetChildren()) do
-		if v:IsA("Frame") and v.Name ~= "1" then
-			local tValue = v:FindFirstChild("TowerValue")
+		if v:IsA("GuiObject") then
+			local tValue = getTowerValueObject(v)
 			if tValue and tValue.Value then
 				local statsTower = UpgradesModule[tValue.Value.Name]
 				if statsTower then
@@ -698,9 +601,9 @@ refreshInventoryButtonVisibility = function()
 	local shouldShowDefaultCount = newString == "" and not _G.evolveTowerSelection and not isJunkTraderSelectionActive()
 
 	for _, towerButton in pairs(ContentGrid:GetChildren()) do
-		if towerButton.Name == "1" or not towerButton:IsA("Frame") then continue end
+		if not towerButton:IsA("GuiObject") then continue end
 
-		local tVal = towerButton:FindFirstChild("TowerValue")
+		local tVal = getTowerValueObject(towerButton)
 		if not (tVal and tVal.Value) then
 			continue
 		end
@@ -724,20 +627,45 @@ refreshInventoryButtonVisibility = function()
 end
 
 local function addButton(tower)
+	-- Evita duplicatas
 	for _, button in pairs(ContentGrid:GetChildren()) do
-		if button:IsA("Frame") and button:FindFirstChild("TowerValue") and button.TowerValue.Value == tower then return end
+		if button:IsA("GuiObject") then
+			local towerValue = getTowerValueObject(button)
+			if towerValue and towerValue.Value == tower then
+				return
+			end
+		end
 	end
 
-	local button = TemplateButton:Clone()
+	-- Pega o status da torre para saber a raridade
+	local statsTower = UpgradesModule[tower.Name]
+	local rarity = (statsTower and statsTower["Rarity"]) or "Rare"
+
+	-- Procura o template dinamicamente na UI com base na raridade
+	local template = ContentGrid:FindFirstChild(rarity) or ContentGrid:FindFirstChild("Rare")
+	if not template then return end -- Fallback se não encontrar nenhum template válido
+
+	local button = template:Clone()
 	button.Name = "Tower"..tower.Name
-	button.NameChar.Text = tower.Name
-	button.Lvl.Text = "Lvl " .. tower:GetAttribute("Level")
 	button.Visible = true
 
-	local towerValueInstance = Instance.new("ObjectValue")
-	towerValueInstance.Name = "TowerValue"
-	towerValueInstance.Value = tower
-	towerValueInstance.Parent = button
+	setTowerValueObject(button, tower)
+
+	-- Referências baseadas na nova hierarquia da imagem
+	local profile = button:FindFirstChild("Profile")
+	local textTemp = profile and profile:FindFirstChild("TextTemp")
+
+	if textTemp then
+		if textTemp:FindFirstChild("NamePerson") then textTemp.NamePerson.Text = tower.Name end
+		if textTemp:FindFirstChild("Lvl") then textTemp.Lvl.Text = "Lvl " .. tower:GetAttribute("Level") end
+
+		if statsTower then
+			local baseStats = statsTower.Upgrades[1]
+			if textTemp:FindFirstChild("Amount") then
+				textTemp.Amount.Text = "$" .. baseStats.Price
+			end
+		end
+	end
 
 	if button:FindFirstChild("Currency Icon") then button["Currency Icon"].Visible = false end
 	if button:FindFirstChild("Fuse_Icon") then button.Fuse_Icon.Visible = false end
@@ -748,8 +676,12 @@ local function addButton(tower)
 	end
 
 	task.spawn(function()
-		local vp = ViewPortModule.CreateViewPort(tower.Name,tower:GetAttribute("Shiny"))
-		vp.Parent = button:FindFirstChild("Placeholder") or button
+		local vp = ViewPortModule.CreateViewPort(tower.Name, tower:GetAttribute("Shiny"))
+		if profile and profile:FindFirstChild("ViewportFrame") then
+			vp.Parent = profile.ViewportFrame
+		else
+			vp.Parent = button
+		end
 	end)
 
 	tower:GetPropertyChangedSignal('Parent'):Connect(function()
@@ -762,25 +694,13 @@ local function addButton(tower)
 	end
 
 	tower:GetAttributeChangedSignal("Level"):Connect(function()
-		button.Lvl.Text = "Lvl " .. tower:GetAttribute("Level")
+		if textTemp and textTemp:FindFirstChild("Lvl") then
+			textTemp.Lvl.Text = "Lvl " .. tower:GetAttribute("Level")
+		end
 	end)
 
-	local statsTower = UpgradesModule[tower.Name]
-	if statsTower then
-		local baseStats = statsTower.Upgrades[1]
-		local rarity = statsTower["Rarity"] or "Rare"
-		button.Amount.Text = "$" .. baseStats.Price
-
-		local cardColor = getRarityColor(rarity)
-		if button:FindFirstChild("Bg") then
-			button.Bg.BackgroundColor3 = cardColor
-			if button.Bg:FindFirstChild("1") then button.Bg["1"].Color = cardColor end
-			if button.Bg:FindFirstChild("2") then button.Bg["2"].Color = cardColor end
-			if button.Bg:FindFirstChild("3") then button.Bg["3"].Color = cardColor end
-		end
-	end
-
-	button.Btn.Activated:Connect(function() 
+	-- O próprio template é o botão agora, então usamos 'button.Activated'
+	button.Activated:Connect(function()
 		if isJunkTraderSelectionActive() then
 			if canUseTowerInCurrentSelectionMode(tower) then
 				_G.junkTraderSelectTower(button, tower)
@@ -794,12 +714,13 @@ local function addButton(tower)
 		end
 
 		if _G.traitTowerSelection == false and _G.InventoryButtonsClickable == true and _G.evolveTowerSelection == false and _G.levelupTowerSelection == false then
-			local rarity = statsTower["Rarity"] or "Rare"
+			local statsTowerRefresh = UpgradesModule[tower.Name]
+			local finalRarity = statsTowerRefresh["Rarity"] or "Rare"
 			buttonConnections:DisconnectAll()
 
 			if selectState == "Sell" then
 				local SellText = ConfirmSellBtn:FindFirstChild("Contents") and ConfirmSellBtn.Contents:FindFirstChild("TextLabel")
-				if tower:GetAttribute("Locked") or statsTower.NotSaleable then return end
+				if tower:GetAttribute("Locked") or statsTowerRefresh.NotSaleable then return end
 
 				if table.find(sellButtonList,button) then
 					table.remove(sellButtonList, table.find(sellButtonList,button))
@@ -813,7 +734,7 @@ local function addButton(tower)
 				return
 
 			elseif selectState == "Fuse" then
-				if tower:GetAttribute("Locked") or statsTower.NotSaleable then return end
+				if tower:GetAttribute("Locked") or statsTowerRefresh.NotSaleable then return end
 				if SelectedTowerValue.Value == tower then return end
 				local inFuseButtonListIndex = table.find(fuseButtonList,button)
 
@@ -830,10 +751,11 @@ local function addButton(tower)
 				local oldLevel, oldExp = fuseTower:GetAttribute("Level"), fuseTower:GetAttribute("Exp")
 
 				for index,fuseBtn in pairs(fuseButtonList) do
-					local tValue = fuseBtn:FindFirstChild("TowerValue") and fuseBtn.TowerValue.Value
-					if not tValue then continue end
-					local towerRarity = UpgradesModule[tValue.Name].Rarity
-					local towerLevel = tValue:GetAttribute("Level")
+					local towerValueObject = getTowerValueObject(fuseBtn)
+					local selectedTower = towerValueObject and towerValueObject.Value
+					if not selectedTower then continue end
+					local towerRarity = UpgradesModule[selectedTower.Name].Rarity
+					local towerLevel = selectedTower:GetAttribute("Level")
 					local addAmount = SellAndFuseModule.ExpFusing[towerRarity] * (1+ towerLevel * (4/50))
 					fuseExpCount += addAmount
 				end
@@ -855,17 +777,16 @@ local function addButton(tower)
 
 			latestSelectedButton = button
 			SelectedTowerValue.Value = tower
-			statsTower = UpgradesModule[tower.Name] 
 
-			if statsTower then
+			if statsTowerRefresh then
 				local HasViewPort = ViewportPlaceholder:FindFirstChildOfClass("WorldModel")
 				if HasViewPort then HasViewPort:Destroy() end
 
-				local SelectVp = ViewPortModule.CreateViewPort(statsTower.Name)
+				local SelectVp = ViewPortModule.CreateViewPort(statsTowerRefresh.Name)
 				SelectVp:FindFirstChildOfClass("WorldModel").Parent = ViewportPlaceholder
 
 				local statlabels = {"Damage","Cooldown","Range"}
-				local baseStats = statsTower.Upgrades[1]
+				local baseStats = statsTowerRefresh.Upgrades[1]
 				local levelboost = 1 + tower:GetAttribute("Level")*(1/50)
 
 				for _, stat in pairs(statlabels) do
@@ -884,10 +805,10 @@ local function addButton(tower)
 			local requiredExp = ExpModule.towerExpCalculation(level)
 
 			UnitNameText.Text = tower.Name
-			UnitRarityText.Text = rarity == "Exclusive" and "[EXCLUSIVE]" or rarity
+			UnitRarityText.Text = finalRarity == "Exclusive" and "[EXCLUSIVE]" or finalRarity
 			UnitCostText.Text = "$" .. math.round(UpgradesModule[tower.Name].Upgrades[1].Price)
 
-			local craftColor = getRarityColor(rarity)
+			local craftColor = getRarityColor(finalRarity)
 			local craftBg = CraftFrame:FindFirstChild("Bg")
 			if craftBg then
 				craftBg.BackgroundColor3 = craftColor
@@ -958,7 +879,7 @@ end
 
 local function removeButton(tower)
 	for _, v in pairs(ContentGrid:GetChildren()) do
-		local tVal = v:FindFirstChild("TowerValue")
+		local tVal = getTowerValueObject(v)
 		if tVal and tVal.Value == tower then
 			v:Destroy()
 			return
@@ -976,7 +897,7 @@ end
 UserInputService.InputBegan:Connect(function(input)
 	if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and not inGui then
 		for i, v in pairs(ContentGrid:GetChildren()) do
-			if v:IsA("Frame") and v:GetAttribute("Select") == true then
+			if v:IsA("GuiObject") and getTowerValueObject(v) and v:GetAttribute("Select") == true then
 				v:SetAttribute("Select", false)
 				break
 			end
@@ -1021,7 +942,8 @@ ConfirmFuseBtn.Activated:Connect(function()
 	if not fuseReceiverTower then return end
 	local fuseTowerList = {}
 	for _,fuseButton in pairs(fuseButtonList) do
-		local towerValue = fuseButton:FindFirstChild("TowerValue") and fuseButton.TowerValue.Value
+		local towerValueObject = getTowerValueObject(fuseButton)
+		local towerValue = towerValueObject and towerValueObject.Value
 		if towerValue then table.insert(fuseTowerList, towerValue) end
 	end
 	ReplicatedStorage.Events.FuseTower:FireServer(fuseReceiverTower, fuseTowerList)
@@ -1032,7 +954,10 @@ ConfirmSellBtn.Activated:Connect(function()
 	if #sellButtonList > 0 then
 		local sellTowerList = {}
 		for _,button in pairs(sellButtonList) do
-			table.insert(sellTowerList, button.TowerValue.Value)
+			local towerValueObject = getTowerValueObject(button)
+			if towerValueObject and towerValueObject.Value then
+				table.insert(sellTowerList, towerValueObject.Value)
+			end
 		end
 		ReplicatedStorage.Events.SellItem:FireServer(sellTowerList)
 		changeSelectState("None")

@@ -43,16 +43,20 @@ function health.Setup(model, screenGui)
 		health.UpdateScreenGuiHealth(screenGui, model)
 	end
 
-	model.Humanoid.HealthChanged:Connect(function()
-		--if model.Humanoid.Health > 0 then
+	local function updateHealthDisplays()
 		health.UpdateBarHealth(newHealthBar, model)
 		if screenGui then
 			health.UpdateScreenGuiHealth(screenGui, model)
 		end
-		--end
+	end
+
+	model.Humanoid.HealthChanged:Connect(function()
+		updateHealthDisplays()
 	end)
+	model.Humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(updateHealthDisplays)
 end
 
+-- FUNCTIONS
 function health.UpdateScreenGuiHealth(gui,model)
 	local humanoid = model:WaitForChild("Humanoid")
 
@@ -61,11 +65,12 @@ function health.UpdateScreenGuiHealth(gui,model)
 	end
 
 	if humanoid and gui then
-		local percent = humanoid.Health / humanoid.MaxHealth
+		local percent = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+
 		if gui.CurrentHealth.Size.Y.Scale == 0.5 then
-			gui.CurrentHealth.Size = UDim2.new(math.max(percent, 0), 0, .5, 0)
+			gui.CurrentHealth.Size = UDim2.new(percent, 0, .5, 0)
 		else
-			gui.CurrentHealth.Size = UDim2.new(math.max(percent, 0), 0, 1, 0)
+			gui.CurrentHealth.Size = UDim2.new(percent, 0, 1, 0)
 		end
 
 		if humanoid.Health <= 0 then
@@ -74,7 +79,6 @@ function health.UpdateScreenGuiHealth(gui,model)
 				workspace.Mobs:ClearAllChildren()
 
 			else
-				--gui.HpText.Text = model.Name .. " DEAD" .. humanoid.MaxHealth
 				game.Debris:AddItem(gui,0.5)
 			end
 
@@ -93,14 +97,14 @@ function health.UpdateBarHealth(gui, model)
 	end
 
 	if humanoid and gui then
-		local percent = humanoid.Health / humanoid.MaxHealth
+		local percent = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
 
 		gui.Main.BarFrame.Bar.Size = UDim2.fromScale(percent,1)
 
 		if humanoid.Health <= 0 then
 			if model.Name == "Base" then
 				gui.Main.Health.Text = model.Name .. " DESTROYED".. humanoid.MaxHealth .. ", GG"
-				
+
 				if workspace:FindFirstChild('Mobs') then
 					workspace.Mobs:ClearAllChildren()
 				else

@@ -44,7 +44,7 @@ local Main = IndexFrame:WaitForChild("Main")
 local ItemsTab = Main:WaitForChild("ItemsTab")
 local Content = ItemsTab:WaitForChild("Content")
 local Craft = Main:WaitForChild("Craft")
-local GeneralClaimButton = IndexFrame:FindFirstChild("ClaimButton") 
+local GeneralClaimButton = nil
 
 local TemplateUnit = Content:WaitForChild("1")
 local UnitsIndex = Player:WaitForChild("Index"):WaitForChild("Units Index")
@@ -52,6 +52,13 @@ local Container = Zone.new(workspace:WaitForChild('IndexBox'):WaitForChild('Inde
 
 local Clicked = false
 local allUnitTable = {}
+local unitIndexConnections = {}
+local slotTemplateFallbacks = {
+	Secret = "Mythical",
+	Unique = "Mythical",
+	Exclusive = "Mythical",
+}
+local cachedSlotTemplates
 
 -- FUNCTIONS
 local function ApplyRarityTheme(bgFrame, rarity)
@@ -81,6 +88,53 @@ local function ApplyRarityTheme(bgFrame, rarity)
 	end
 end
 
+local function getSlotTemplatesContainer()
+	if cachedSlotTemplates and cachedSlotTemplates.Parent then
+		return cachedSlotTemplates
+	end
+
+	local templatesRoot = RS:FindFirstChild("Templates")
+	cachedSlotTemplates = templatesRoot and templatesRoot:FindFirstChild("Slots")
+	return cachedSlotTemplates
+end
+
+local function getSlotTemplateForRarity(rarity)
+	local slotTemplates = getSlotTemplatesContainer()
+	if not slotTemplates then
+		return nil
+	end
+
+	local template = rarity and slotTemplates:FindFirstChild(rarity)
+	if template then
+		return template
+	end
+
+	local fallbackRarity = slotTemplateFallbacks[rarity]
+	return fallbackRarity and slotTemplates:FindFirstChild(fallbackRarity) or nil
+end
+
+local function applySlotTemplateBackground(target, rarity)
+	if not target then
+		return false
+	end
+
+	local template = getSlotTemplateForRarity(rarity)
+	local templateBackground = template and template:FindFirstChild("Bg")
+	if not (templateBackground and templateBackground:IsA("GuiObject")) then
+		return false
+	end
+
+	local currentBackground = target:FindFirstChild("Bg")
+	if currentBackground then
+		currentBackground:Destroy()
+	end
+
+	local backgroundClone = templateBackground:Clone()
+	backgroundClone.Name = "Bg"
+	backgroundClone.Parent = target
+	return true
+end
+
 local function PlayerOwnedUnits()
 	local folder = Player:WaitForChild("Index"):WaitForChild("Units Index")
 	if not folder then return 0 end
@@ -94,6 +148,48 @@ local function PlayerOwnedUnits()
 	return #PlayerHas
 end
 
+local function setVisibleIfPresent(instance, visible)
+	if instance and instance:IsA("GuiObject") then
+		instance.Visible = visible
+	end
+end
+
+local function findFirstGuiButton(root)
+	if not root then
+		return nil
+	end
+
+	if root:IsA("GuiButton") then
+		return root
+	end
+
+	local preferredButton = root:FindFirstChild("Btn")
+		or root:FindFirstChild("Button")
+
+	if preferredButton and preferredButton:IsA("GuiButton") then
+		return preferredButton
+	end
+
+	return root:FindFirstChildWhichIsA("GuiButton", true)
+end
+
+local function applyViewportState(viewport, isRevealed)
+	if not viewport then
+		return
+	end
+
+	if isRevealed then
+		viewport.Ambient = Color3.new(0.784314, 0.784314, 0.784314)
+		viewport.LightColor = Color3.new(0.54902, 0.54902, 0.54902)
+		viewport.ImageColor3 = Color3.new(1, 1, 1)
+		return
+	end
+
+	viewport.Ambient = Color3.new(0, 0, 0)
+	viewport.LightColor = Color3.new(0, 0, 0)
+	viewport.ImageColor3 = Color3.new(0, 0, 0)
+end
+
 local function Update()
 	for _, unitFrame in Content:GetChildren() do
 		if unitFrame:IsA("Frame") and unitFrame.Name ~= "1" and unitFrame.Name ~= "UIGridLayout" then
@@ -101,7 +197,8 @@ local function Update()
 			local rarity = Upgrades[unitName].Rarity
 
 			-- AQUI ESTÁ A CORREÇÃO: Busca exatamente o Viewport correto pelo nome do personagem
-			local vp = unitFrame.Placeholder:FindFirstChild(unitName)
+			local placeholder = unitFrame:FindFirstChild("Placeholder")
+			local vp = placeholder and placeholder:FindFirstChild(unitName)
 			local unitData = UnitsIndex:FindFirstChild(unitName)
 
 			local btn = unitFrame:FindFirstChild("Btn")
@@ -116,41 +213,26 @@ local function Update()
 			if unitData then
 				if unitData.Value == false then
 					-- ESTADO 2: Desbloqueado mas NÃO coletou (Mostra botão e ESBOÇO PRETO)
-					btn.Visible = true
-					icon.Visible = true
-					amount.Visible = true
-					claim.Visible = true
-
-					if vp then
-						vp.Ambient = Color3.new(0, 0, 0)
-						vp.LightColor = Color3.new(0, 0, 0)
-						vp.ImageColor3 = Color3.new(0, 0, 0)
-					end
+					setVisibleIfPresent(btn, true)
+					setVisibleIfPresent(icon, true)
+					setVisibleIfPresent(amount, true)
+					setVisibleIfPresent(claim, true)
+					applyViewportState(vp, false)
 				else
 					-- ESTADO 3: Desbloqueado e JÁ coletou (Esconde botão e mostra NORMAL)
-					btn.Visible = false
-					icon.Visible = false
-					amount.Visible = false
-					claim.Visible = false
-
-					if vp then
-						vp.Ambient = Color3.new(0.784314, 0.784314, 0.784314)
-						vp.LightColor = Color3.new(0.54902, 0.54902, 0.54902)
-						vp.ImageColor3 = Color3.new(1, 1, 1) 
-					end
+					setVisibleIfPresent(btn, false)
+					setVisibleIfPresent(icon, false)
+					setVisibleIfPresent(amount, false)
+					setVisibleIfPresent(claim, false)
+					applyViewportState(vp, true)
 				end
 			else
 				-- ESTADO 1: Não possui o personagem (Esconde botão e mostra ESBOÇO PRETO)
-				btn.Visible = false
-				icon.Visible = false
-				amount.Visible = false
-				claim.Visible = false
-
-				if vp then
-					vp.Ambient = Color3.new(0, 0, 0)
-					vp.LightColor = Color3.new(0, 0, 0)
-					vp.ImageColor3 = Color3.new(0, 0, 0) 
-				end
+				setVisibleIfPresent(btn, false)
+				setVisibleIfPresent(icon, false)
+				setVisibleIfPresent(amount, false)
+				setVisibleIfPresent(claim, false)
+				applyViewportState(vp, false)
 			end
 		end
 	end
@@ -186,22 +268,65 @@ local function ShowUnit(UnitName)
 		if unitData then
 			if unitData.Value == false then
 				-- ESTADO 2: Desbloqueado mas NÃO coletou (ESBOÇO PRETO)
-				Vp.Ambient = Color3.new(0, 0, 0)
-				Vp.LightColor = Color3.new(0, 0, 0)
-				Vp.ImageColor3 = Color3.new(0, 0, 0)
+				applyViewportState(Vp, false)
 			else
 				-- ESTADO 3: Desbloqueado e JÁ coletou (NORMAL)
-				Vp.Ambient = Color3.new(0.784314, 0.784314, 0.784314)
-				Vp.LightColor = Color3.new(0.54902, 0.54902, 0.54902)
-				Vp.ImageColor3 = Color3.new(1, 1, 1) 
+				applyViewportState(Vp, true)
 			end
 		else
 			-- ESTADO 1: Não possui o personagem (ESBOÇO PRETO)
-			Vp.Ambient = Color3.new(0, 0, 0)
-			Vp.LightColor = Color3.new(0, 0, 0)
-			Vp.ImageColor3 = Color3.new(0, 0, 0) 
+			applyViewportState(Vp, false)
 		end
 	end
+end
+
+local function bindUnitIndexValue(unitValue)
+	if not unitValue or not unitValue:IsA("BoolValue") or unitIndexConnections[unitValue] then
+		return
+	end
+
+	unitIndexConnections[unitValue] = unitValue:GetPropertyChangedSignal("Value"):Connect(Update)
+end
+
+local function refreshSelectedUnitPreview()
+	local selectedViewport = Craft.Placeholder:FindFirstChildOfClass("ViewportFrame")
+	if not selectedViewport then
+		return
+	end
+
+	local unitData = UnitsIndex:FindFirstChild(selectedViewport.Name)
+	applyViewportState(selectedViewport, unitData and unitData.Value == true)
+end
+
+local function claimUnit(unitName)
+	if Clicked then
+		return
+	end
+
+	local unitData = UnitsIndex:FindFirstChild(unitName)
+	if not unitData or unitData.Value == true then
+		ShowUnit(unitName)
+		return
+	end
+
+	Clicked = true
+	task.delay(0.5, function()
+		Clicked = false
+	end)
+
+	IndexClaim:FireServer(unitName)
+	task.wait(0.1)
+	Update()
+	refreshSelectedUnitPreview()
+end
+
+GeneralClaimButton = findFirstGuiButton(
+	IndexFrame:FindFirstChild("Button")
+	or IndexFrame:FindFirstChild("ClaimButton")
+)
+
+if not GeneralClaimButton then
+	warn("[Index] General claim button not found under IndexFrame")
 end
 
 -- INIT
@@ -228,21 +353,40 @@ for index, UnitName in allUnitTable do
 	Template.Visible = true
 	Template.Parent = Content
 
+	local function handleUnitSelection()
+		ShowUnit(UnitName)
+	end
+
+	local function handleUnitClaim()
+		claimUnit(UnitName)
+	end
+
 	local clickButton = Instance.new("TextButton")
 	clickButton.Size = UDim2.fromScale(1, 1)
 	clickButton.BackgroundTransparency = 1
 	clickButton.Text = ""
-	clickButton.ZIndex = 10
-	clickButton.Parent = Template
+	clickButton.ZIndex = 1
+	clickButton.Parent = Template:FindFirstChild("Placeholder") or Template
 
 	local uiScale = Instance.new("UIScale")
 	uiScale.Parent = clickButton
 
 	ButtonAnimation.unitButtonAnimation(clickButton)
 
-	clickButton.Activated:Connect(function()
-		ShowUnit(UnitName)
-	end)
+	clickButton.Activated:Connect(handleUnitSelection)
+
+	local unitButton = findFirstGuiButton(
+		Template:FindFirstChild("Button")
+		or Template:FindFirstChild("Btn")
+	)
+	if unitButton and unitButton:IsA("GuiButton") then
+		if not unitButton:FindFirstChildOfClass("UIScale") then
+			Instance.new("UIScale").Parent = unitButton
+		end
+
+		ButtonAnimation.unitButtonAnimation(unitButton)
+		unitButton.Activated:Connect(handleUnitClaim)
+	end
 
 	local Vp = ViewPort.CreateViewPort(UnitName)
 	if Vp then
@@ -255,12 +399,31 @@ for index, UnitName in allUnitTable do
 		end
 	end
 
-	ApplyRarityTheme(Template.Bg, rarity)
+	if not applySlotTemplateBackground(Template, rarity) then
+		ApplyRarityTheme(Template.Bg, rarity)
+	end
 end
 
 Update()
 
-UnitsIndex.ChildAdded:Connect(Update)
+for _, unitValue in UnitsIndex:GetChildren() do
+	bindUnitIndexValue(unitValue)
+end
+
+UnitsIndex.ChildAdded:Connect(function(unitValue)
+	bindUnitIndexValue(unitValue)
+	Update()
+end)
+
+UnitsIndex.ChildRemoved:Connect(function(unitValue)
+	local connection = unitIndexConnections[unitValue]
+	if connection then
+		connection:Disconnect()
+		unitIndexConnections[unitValue] = nil
+	end
+
+	Update()
+end)
 
 if GeneralClaimButton then
 	GeneralClaimButton.Activated:Connect(function()
@@ -280,6 +443,7 @@ if GeneralClaimButton then
 				IndexClaim:FireServer()
 				task.wait(0.1)
 				Update()
+				refreshSelectedUnitPreview()
 			else
 				_G.Message("No unclaimed unit rewards remaining", Color3.new(1, 0, 0), nil, "Error")
 			end

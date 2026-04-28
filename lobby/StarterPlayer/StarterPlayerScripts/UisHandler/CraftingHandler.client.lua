@@ -12,7 +12,7 @@ local CraftingUI = NewUI:WaitForChild("Crafting")
 
 local MainPanel = CraftingUI:WaitForChild("Main")
 local CraftPanel = MainPanel:WaitForChild("Craft")
-local ItemsTabContent = CraftingUI:WaitForChild("ItemsTab"):WaitForChild("Content")
+local ItemsTabContent = MainPanel:WaitForChild("ItemsTab"):WaitForChild("Content")
 
 local ItemTemplate = ItemsTabContent:WaitForChild("1")
 local MaterialTemplate = ItemTemplate:WaitForChild("Itemsrequired"):WaitForChild("1")
@@ -119,6 +119,17 @@ local function SetViewport(name, parentTo)
 	end
 end
 
+local function CanCraft(itemStats)
+	if not itemStats or not itemStats.CraftingRequirement then return false end
+	for reqName, amount in itemStats.CraftingRequirement do
+		local playerRequireItem = PlayerItems:FindFirstChild(reqName)
+		if not playerRequireItem or playerRequireItem.Value < amount then 
+			return false 
+		end
+	end
+	return true
+end
+
 local function SelectItem(itemStats)
 	selectedItemName = itemStats.Name
 
@@ -128,6 +139,15 @@ local function SelectItem(itemStats)
 
 	SetViewport(itemStats.Name, CraftPanel.Placeholder.ViewportFrame)
 	AddRarityGradient(CraftPanel.Rarity, itemStats.Rarity)
+
+	-- Exibe os detalhes do item apenas após ser selecionado
+	CraftPanel.Title.Visible = true
+	CraftPanel.Description.Visible = true
+	CraftPanel.Rarity.Visible = true
+	CraftPanel.Placeholder.Visible = true
+
+	-- Exibe o botão de Craft apenas se tiver os requisitos
+	CraftPanel.Button.Visible = CanCraft(itemStats)
 end
 
 local function UpdateRequirementQuantity()
@@ -154,6 +174,14 @@ local function UpdateRequirementQuantity()
 			else
 				reqFrame.Amount.TextColor3 = Color3.fromRGB(255, 85, 85) -- Vermelho se faltar
 			end
+		end
+	end
+
+	-- Atualiza dinamicamente a visibilidade do botão caso o item selecionado fique pronto para ser forjado
+	if selectedItemName then
+		local stats = ItemStatsModule[selectedItemName]
+		if stats then
+			CraftPanel.Button.Visible = CanCraft(stats)
 		end
 	end
 end
@@ -203,14 +231,11 @@ local function CraftPress()
 	onCooldown = true
 
 	local itemStats = ItemStatsModule[selectedItemName]
-	local haveAllRequirement = true
 
-	for reqName, amount in itemStats.CraftingRequirement do
-		local playerRequireItem = PlayerItems:FindFirstChild(reqName)
-		if not playerRequireItem or playerRequireItem.Value < amount then 
-			haveAllRequirement = false 
-			break 
-		end
+	-- Dupla verificação no momento do clique por segurança
+	if not CanCraft(itemStats) then
+		onCooldown = false
+		return 
 	end
 
 	local craftSuccessfully = CraftFunction:InvokeServer(selectedItemName)
@@ -229,6 +254,13 @@ local function CraftPress()
 end
 
 -- INIT
+
+CraftPanel.Title.Visible = false
+CraftPanel.Description.Visible = false
+CraftPanel.Rarity.Visible = false
+CraftPanel.Placeholder.Visible = false
+CraftPanel.Button.Visible = false
+
 RunService.RenderStepped:Connect(UpdateGradients)
 AddAllItems()
 UpdateRequirementQuantity()
@@ -237,17 +269,13 @@ for _, item in PlayerItems:GetChildren() do
 	item:GetPropertyChangedSignal("Value"):Connect(UpdateRequirementQuantity)
 end
 
-CraftPanel.Button.Frame.Btn.Activated:Connect(CraftPress)
-
-CraftingUI.Closebtn.Activated:Connect(function()
-	_G.CloseAll("NewCraftingFrame")
-end)
+CraftPanel.Button.Btn.Activated:Connect(CraftPress)
 
 local Container = Zone.new(CraftingZonePart)
 
 Container.playerEntered:Connect(function(plr)
 	if plr == Player then
-		_G.CloseAll("NewCraftingFrame")
+		_G.CloseAll("Crafting")
 		UI_Handler.DisableAllButtons()
 	end
 end)

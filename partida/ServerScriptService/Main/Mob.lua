@@ -14,6 +14,32 @@ local STOP_DISTANCE = 8
 local RELEASE_DISTANCE = 14
 local CHECK_INTERVAL = 0.08
 
+local function getGameSpeed()
+	local gameSpeed = info:FindFirstChild("GameSpeed")
+	if gameSpeed and gameSpeed.Value > 0 then
+		return gameSpeed.Value
+	end
+
+	return 1
+end
+
+local function getSlowFactor(model)
+	if model:GetAttribute("Slowness") then
+		return model:GetAttribute("SlownessFactor") or 0.8
+	end
+
+	return 1
+end
+
+local function getScaledMobSpeed(model)
+	local originalSpeed = model:FindFirstChild("OriginalSpeed")
+	if not originalSpeed then
+		return nil
+	end
+
+	return originalSpeed.Value * getGameSpeed() * getSlowFactor(model)
+end
+
 local function setMobHidden(model, hidden)
 	for _, obj in ipairs(model:GetDescendants()) do
 		if obj:IsA("BasePart") and obj.Name ~= "HumanoidRootPart" then
@@ -89,7 +115,7 @@ function mob.Move(newMob, map, team)
 		if not newMob:FindFirstChild("MovingTo") then
 			return
 		end
-		
+
 		newMob.MovingTo.Value = waypoint
 		local target = waypoints[waypoint].Position
 
@@ -105,8 +131,9 @@ function mob.Move(newMob, map, team)
 			else
 				hasMoved = true
 				setMobHidden(newMob, false)
-				if newMob:FindFirstChild("OriginalSpeed") then
-					humanoid.WalkSpeed = newMob.OriginalSpeed.Value
+				local scaledSpeed = getScaledMobSpeed(newMob)
+				if scaledSpeed then
+					humanoid.WalkSpeed = scaledSpeed
 				end
 				humanoid:MoveTo(target)
 			end
@@ -140,7 +167,6 @@ end
 
 function mob.Spawn(name, quantity, map, old, health, money, speed, isBoss, unitStats, isbossrush, team)
 	local mobExists = ReplicatedStorage.Enemies:FindFirstChild(name)
-	local ogspeed = if workspace.Info.TestingMode.Value then 1 else unitStats.speed
 	local lastMob = old
 
 	if mobExists then
@@ -169,7 +195,11 @@ function mob.Spawn(name, quantity, map, old, health, money, speed, isBoss, unitS
 
 			newMob.Humanoid.MaxHealth = health or newMob.Humanoid.MaxHealth
 			newMob.Humanoid.Health = newMob.Humanoid.MaxHealth
-			newMob.Humanoid.WalkSpeed = speed or newMob.Humanoid.WalkSpeed
+			local baseSpeed = speed or (unitStats and unitStats.speed) or newMob.Humanoid.WalkSpeed
+			if workspace.Info.TestingMode.Value then
+				baseSpeed = 1
+			end
+			newMob.Humanoid.WalkSpeed = baseSpeed * getGameSpeed()
 
 			if old then
 				newMob:PivotTo(old.HumanoidRootPart.CFrame)
@@ -212,7 +242,7 @@ function mob.Spawn(name, quantity, map, old, health, money, speed, isBoss, unitS
 
 			local OriginalSpeed = Instance.new("NumberValue")
 			OriginalSpeed.Name = "OriginalSpeed"
-			OriginalSpeed.Value = ogspeed
+			OriginalSpeed.Value = baseSpeed
 			OriginalSpeed.Parent = newMob
 
 			if isBoss or isbossrush then

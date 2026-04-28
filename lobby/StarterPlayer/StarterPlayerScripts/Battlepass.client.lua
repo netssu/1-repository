@@ -1,44 +1,10 @@
--- Services
+-- SERVICES
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local MPS = game:GetService("MarketplaceService")
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
 
--- Modules
-local BpConfig = require(game.ReplicatedStorage.Configs.BattlepassConfig)
-local EpConfig = require(game.ReplicatedStorage.EpisodeConfig)
-local ViewPortModule = require(ReplicatedStorage.Modules.ViewPortModule)
-
--- Data Loading
-local player = game.Players.LocalPlayer
-local playerGui = player.PlayerGui
-
-repeat task.wait() until player:FindFirstChild("DataLoaded")
-
--- Remotes
-local ClaimBattlepassReward = ReplicatedStorage.Remotes.Quests.ClaimBattlepassReward
-local ClaimQuestReward = ReplicatedStorage.Remotes.Quests.ClaimQuestReward
-
--- Variables
-local bpData = player.BattlepassData
-
-
-local bpFrame = playerGui:WaitForChild("CoreGameUI").Battlepass.BattlepassFrame
-local shop = bpFrame.Side_Shop
-local rewardHolder = bpFrame.Core.Contents.Rewards_Frame.Bar
-local TierFrame = script.TierTemplate
-local GiftFolder = playerGui.CoreGameUI.Gift
-local GiftFrame = GiftFolder.GiftFrame
-local PremiumFrame = bpFrame.Core["Premium Battlepass"]
-local QuestFrame = bpFrame.Core.Pass_Quests
-local RewardFrame = bpFrame.Core.Contents
-local SelectedGiftId = GiftFolder.SelectedGiftId
-local Functions = game.ReplicatedStorage:WaitForChild("Functions")
-local GetMarketInfoByName = Functions:WaitForChild("GetMarketInfoByName")
-local BuyEvent = game.ReplicatedStorage:WaitForChild("Events"):WaitForChild("Buy")
-
-local Season = BpConfig.GetSeason()
-local Tiers = BpConfig.Tiers[Season]
-local lastInfTier = bpData.Tier.Value
-
+-- CONSTANTS
 local ItemImages = {
 	['Gems'] = 131476601794300,
 	['Coins'] = 72741365992086,
@@ -56,9 +22,60 @@ local ItemImages = {
 	["Exp"] = 137556731795988,
 }
 
+local skipProducts = {
+	[1] = {Normal = 3279744329, Gift = 3281245102},
+	[5] = {Normal = 3286932503, Gift = 3286932640},
+	[10] = {Normal = 3279744407, Gift = 3280425048},
+}
 
--- Helper funcs
+-- VARIABLES
+local BpConfig = require(ReplicatedStorage.Configs.BattlepassConfig)
+local EpConfig = require(ReplicatedStorage.EpisodeConfig)
+local ViewPortModule = require(ReplicatedStorage.Modules.ViewPortModule)
 
+local player = Players.LocalPlayer
+local playerGui = player.PlayerGui
+
+repeat task.wait() until player:FindFirstChild("DataLoaded")
+
+local ClaimBattlepassReward = ReplicatedStorage.Remotes.Quests.ClaimBattlepassReward
+local ClaimQuestReward = ReplicatedStorage.Remotes.Quests.ClaimQuestReward
+local Functions = ReplicatedStorage:WaitForChild("Functions")
+local GetMarketInfoByName = Functions:WaitForChild("GetMarketInfoByName")
+local BuyEvent = ReplicatedStorage:WaitForChild("Events"):WaitForChild("Buy")
+
+local bpData = player.BattlepassData
+
+-- Correção de carregamento (evita o erro "CoreGameUI is not a valid member")
+local CoreGameUI = playerGui:WaitForChild("CoreGameUI")
+local GiftFolder = CoreGameUI:WaitForChild("Gift")
+local GiftFrame = GiftFolder:WaitForChild("GiftFrame")
+local SelectedGiftId = GiftFolder:WaitForChild("SelectedGiftId")
+
+local newBpFrame = playerGui:WaitForChild("NewUI"):WaitForChild("BattlepassFrame")
+local Main = newBpFrame:WaitForChild("Main")
+local ContentHolder = Main:WaitForChild("Content")
+
+local RewardHolder = ContentHolder:WaitForChild("Contents")
+local QuestFrame = ContentHolder:WaitForChild("Pass_Quests")
+local TopFrame = ContentHolder:WaitForChild("Top")
+
+-- Extraindo e limpando os Templates
+local TierTemplate = RewardHolder:WaitForChild("1"):Clone()
+RewardHolder:WaitForChild("1"):Destroy()
+
+local QuestTemplate = QuestFrame:WaitForChild("Contents"):WaitForChild("QuestTemplate"):Clone()
+QuestFrame:WaitForChild("Contents"):WaitForChild("QuestTemplate"):Destroy()
+
+local PremiumOverlay = ContentHolder:WaitForChild("Premium Battlepass")
+local PurchasesContents = newBpFrame:WaitForChild("Purchases"):WaitForChild("Contents")
+
+local Season = BpConfig.GetSeason()
+local Tiers = BpConfig.Tiers[Season]
+local lastInfTier = bpData.Tier.Value
+local showingQuests = false
+
+-- FUNCTIONS
 local function formatTime(seconds)
 	local h = math.floor(seconds / 3600)
 	local m = math.floor((seconds % 3600) / 60)
@@ -66,84 +83,19 @@ local function formatTime(seconds)
 	return string.format("%02d:%02d:%02d", h, m, s)
 end
 
-
-function NewTokenUI(ui)
-	local BuyButton = ui:WaitForChild("Buy")
-	local GiftButton = ui:WaitForChild("Gift")
-	
-	
-	local Info = GetMarketInfoByName:InvokeServer(ui.Parent.Name) --Market.GetInfoOfName(ui.Name)
-
-	warn(Info)
-
-	BuyButton.MouseButton1Down:Connect(function()
-		BuyEvent:FireServer(Info.Id)
-	end)
-
-	GiftButton.MouseButton1Down:Connect(function()
-		SelectedGiftId.Value = Info.GiftId
-		GiftFrame.Visible = true
-	end)
-
+local function scaleBar(min, max, bar)
+	local targetScale = math.clamp(min / max, 0, 1)
+	local tweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(bar, tweenInfo, {Size = UDim2.new(targetScale, 0, 1, 0)}):Play()
 end
 
-function NewOtherTokenUI(ui)
-	for i,v in ui:GetChildren() do
-		if v:IsA("Frame") then
-			for i,value in v:GetChildren() do
-				warn("Value is: ", value.Name)
-				local BuyButton = value:WaitForChild("Buy")
-				local GiftButton = value:WaitForChild("Gift")
-				
-				local Info = GetMarketInfoByName:InvokeServer(value.Parent.Name) --Market.GetInfoOfName(ui.Name)
-
-				BuyButton.MouseButton1Down:Connect(function()
-					BuyEvent:FireServer(Info.Id)
-				end)
-
-				GiftButton.MouseButton1Down:Connect(function()
-					SelectedGiftId.Value = Info.GiftId
-					GiftFrame.Visible = true
-				end)		
-			end
-		end
-	end
-
-end
-
-bpFrame.Core.X_Close.Activated:Connect(function()
-	_G.CloseAll("BattlepassFrame")
-end)
-
-bpFrame.Core["Premium Battlepass"].Contents.Buy.Activated:Connect(function()
-	MPS:PromptProductPurchase(player, 3296909141)
-end)
-
-local skipProducts = {
-	[1] = {Normal = 3279744329, Gift = 3281245102},
-	[5] = {Normal = 3286932503, Gift = 3286932640},
-	[10] = {Normal = 3279744407, Gift = 3280425048},
-}
-
-for _, skipFrame in ipairs(shop.Contents:GetChildren()) do
-	if skipFrame:IsA("Frame") and skipFrame.Name:find("Skip_") then
-		local skipAmount = tonumber(skipFrame.Name:match("Skip_(%d+)"))
-		if skipProducts[skipAmount] then
-			skipFrame.Contents.Buy.Activated:Connect(function()
-				MPS:PromptProductPurchase(player, skipProducts[skipAmount].Normal)
-			end)
-		end
-	end
-end
-
-
-local function setupFrame(frame, reward)
+local function setupFrame(frame, reward, tierNum)
 	if reward.Special then
 		if reward.Special == "Unit" then
-			local displayIcon = frame.Reward.Contents.DisplayIcon
+			local displayIcon = frame.Image.Icon
 			local isShiny = reward.Title:find("SHINY") ~= nil
 			local unitName = isShiny and reward.Title:split("SHINY ")[2] or reward.Title
-			
+
 			local newVP = ViewPortModule.CreateViewPort(unitName, isShiny)
 			if newVP then
 				newVP.ZIndex = displayIcon.ZIndex
@@ -156,246 +108,136 @@ local function setupFrame(frame, reward)
 		end
 	else
 		if ItemImages[reward.Title] then
-		--print(reward.Title)
-			frame.Reward.Contents.DisplayIcon.Image = "rbxassetid://"..ItemImages[reward.Title]
+			frame.Image.Icon.Image = "rbxassetid://"..ItemImages[reward.Title]
 		else
 			warn("image nf for: "..reward.Title)
 		end 
-
 	end
-	
+
 	if reward.Amount then
-		frame.Reward.Contents.AmountLabel.Text = tostring(reward.Amount)
+		frame.Multiplier.Text = tostring(reward.Amount)
 	end
-end
-
-for _, ui in bpFrame.Core["Premium Battlepass"]:GetChildren() do
-	NewTokenUI(ui)
-end
-
-for _, ui in bpFrame:GetChildren() do
-	if ui.Name == "Side_Shop" then
-		NewOtherTokenUI(ui.Contents)
+	if tierNum then
+		frame.Title.Text = tostring(tierNum)
 	end
 end
 
 local function updateStatus(tier)
 	local tierName = "Tier" .. tier
-	--print("Updating status for:", tierName)
-
-	local tierFrame = rewardHolder:FindFirstChild(tierName)
-	if not tierFrame then
-		return
-	end
-	
-	task.spawn(function()
-		for i = 1, tier do
-			if bpData.Tier.Value >= i then
-				local fillerTier = rewardHolder:FindFirstChild("Tier"..i)
-				if fillerTier then
-					fillerTier.TierDisplay.Level_Template.Contents.Locked.Visible = false
-				end
-			end
-		end
-	end)
+	local tierFrame = RewardHolder:FindFirstChild(tierName)
+	if not tierFrame then return end
 
 	local tierData = bpData.TiersClaimed:FindFirstChild(tierName)
-	if not tierData then
-		--warn("No tier data found for", tierName)
-		return
-	end
+	if not tierData then return end
 
 	local freeClaimed = false
 	local premiumClaimed = false
 
-	if tierData then
-		local free = tierData:FindFirstChild("Free")
-		local premium = tierData:FindFirstChild("Premium")
+	local free = tierData:FindFirstChild("Free")
+	local premium = tierData:FindFirstChild("Premium")
 
-		if free and free.Value then
-			freeClaimed = true
-		end
+	if free and free.Value then freeClaimed = true end
+	if premium and premium.Value then premiumClaimed = true end
 
-		if premium and premium.Value then
-			premiumClaimed = true
-		end
+	if freeClaimed then
+		tierFrame.Free.Btn.Visible = false
+		tierFrame.Free.Image.Icon.ImageTransparency = 0.5
 	end
 
-	local freeBorders = tierFrame.FreeFrame.Reward.Contents.Border
-	local premiumBorders = tierFrame.PremiumFrame.Reward.Contents.Border
-
-	local freeClaimedGradient = freeBorders:FindFirstChild("Claimed")
-	local freeUnclaimedGradient = freeBorders:FindFirstChild("Unclaimed")
-
-	local premiumClaimedGradient = premiumBorders:FindFirstChild("Claimed")
-	local premiumUnclaimedGradient = premiumBorders:FindFirstChild("Unclaimed")
-
-	if freeClaimedGradient and freeUnclaimedGradient then
-		freeClaimedGradient.Enabled = freeClaimed
-		freeUnclaimedGradient.Enabled = not freeClaimed
-	end
-
-	if premiumClaimedGradient and premiumUnclaimedGradient then
-		premiumClaimedGradient.Enabled = premiumClaimed
-		premiumUnclaimedGradient.Enabled = not premiumClaimed
+	if premiumClaimed then
+		tierFrame.Premium.Btn.Visible = false
+		tierFrame.Premium.Image.Icon.ImageTransparency = 0.5
 	end
 end
 
-
-
 local function setupInfTemp(tier)
-	local function updateClaimBorders(frame, claimed)
-		frame.Reward.Contents.Border.Unclaimed.Enabled = not claimed
-		frame.Reward.Contents.Border.Claimed.Enabled = claimed
-	end
-	
 	local infRewards = bpData.InfiniteRewards
 	local tierFolder = infRewards:FindFirstChild("Tier"..tier)
-	if not tierFolder or rewardHolder:FindFirstChild("Tier"..tier) then
-		return
-	end
-	
+	if not tierFolder or RewardHolder:FindFirstChild("Tier"..tier) then return end
+
 	local rewardName = tierFolder.Reward.Value
 
-	local TierTemp = TierFrame:Clone()
+	local TierTemp = TierTemplate:Clone()
 	TierTemp.Name = "Tier"..tier
-	TierTemp.TierDisplay.Level_Template.Contents.Locked.Visible = false
-	TierTemp.TierDisplay.Level_Template.Contents.TextLabel.Text = "Tier #"..tier
-	
+
 	local freeFolder = tierFolder:WaitForChild("Free")
 	local premFolder = tierFolder:WaitForChild("Premium")
 
 	local freeAmount = freeFolder.Amount and freeFolder.Amount.Value or 0
 	local premiumAmount = premFolder.Amount and premFolder.Amount.Value or 0
 
-	local freeClaimed = freeFolder.Claimed.Value
-	local premiumClaimed = premFolder.Claimed.Value
+	setupFrame(TierTemp.Free, {Amount = freeAmount, Title = rewardName}, tier)
+	setupFrame(TierTemp.Premium, {Amount = premiumAmount, Title = rewardName}, tier)
 
-	updateClaimBorders(TierTemp.FreeFrame, freeClaimed)
-	updateClaimBorders(TierTemp.PremiumFrame, premiumClaimed)
+	local function syncClaimVisuals()
+		if freeFolder.Claimed.Value then
+			TierTemp.Free.Btn.Visible = false
+			TierTemp.Free.Image.Icon.ImageTransparency = 0.5
+		end
+		if premFolder.Claimed.Value then
+			TierTemp.Premium.Btn.Visible = false
+			TierTemp.Premium.Image.Icon.ImageTransparency = 0.5
+		end
+	end
+	syncClaimVisuals()
 
-	freeFolder.Claimed.Changed:Connect(function()
-		updateClaimBorders(TierTemp.FreeFrame, freeFolder.Claimed.Value)
-	end)
-	premFolder.Claimed.Changed:Connect(function()
-		updateClaimBorders(TierTemp.PremiumFrame, premFolder.Claimed.Value)
-	end)
+	freeFolder.Claimed.Changed:Connect(syncClaimVisuals)
+	premFolder.Claimed.Changed:Connect(syncClaimVisuals)
 
-	setupFrame(TierTemp.FreeFrame, {Amount = freeAmount, Title = rewardName})
-	setupFrame(TierTemp.PremiumFrame, {Amount = premiumAmount, Title = rewardName})
-
-	TierTemp.FreeFrame.Reward.Activated:Connect(function()
+	TierTemp.Free.Btn.Activated:Connect(function()
 		ClaimBattlepassReward:FireServer(tier, false)
 	end)
-	TierTemp.PremiumFrame.Reward.Activated:Connect(function()
+	TierTemp.Premium.Btn.Activated:Connect(function()
 		ClaimBattlepassReward:FireServer(tier, true)
 	end)
 
-	TierTemp.Parent = rewardHolder
+	TierTemp.Parent = RewardHolder
 end
 
 local function premiumVis()
-	PremiumFrame.Visible = not bpData.Premium.Value  
-end
-premiumVis()
-bpData.Premium.Changed:Connect(premiumVis)
-
-local function scaleBar(min, max, bar)
-	bar.Size = UDim2.new(min / max, 0, 1, 0)
+	if not showingQuests then
+		PremiumOverlay.Visible = not bpData.Premium.Value  
+	end
 end
 
 local function updateExpBar()
 	local Exp = bpData.Exp.Value
 	local Tier = bpData.Tier.Value
 	local expRequired = BpConfig.ExpReq(bpData.Tier.Value)
-	scaleBar(Exp, expRequired, bpFrame.Core.Main_Reward.Refresh_Bar.Contents.Bar)
-	bpFrame.Core.Main_Reward.XPDisplay.Text = Exp.."/"..expRequired
-	bpFrame.Core.Main_Reward.TierDisplay.Text = "Tier "..Tier
+
+	scaleBar(Exp, expRequired, TopFrame.Bar.Bar.Fill)
+	TopFrame.Text.Exp.Text = Exp.."/"..expRequired
+	TopFrame.Text.Tier.Text = "Tier "..Tier
 end
-
-updateExpBar()
-bpData.Exp.Changed:Connect(updateExpBar)
-bpData.Tier.Changed:Connect(function()
-	local tier = bpData.Tier.Value
-	lastInfTier = bpData.Tier.Value
-
-	updateExpBar()
-	if tier > #BpConfig.Tiers[BpConfig.GetSeason()] then
-		for tier = #BpConfig.Tiers[BpConfig.GetSeason()] + 1, lastInfTier do
-			setupInfTemp(tier)
-		end
-	end
-
-	task.wait(0.3)
-	updateStatus(tier)
-end)
-
-local function init()
-	for _, reward in ipairs(rewardHolder:GetChildren()) do
-		if reward:IsA("Frame") then
-			reward:Destroy()
-		end
-	end
-	
-	for tier, rewardData in Tiers do
-		local free = rewardData.Free
-		local premium = rewardData.Premium
-
-		local TierTemp = TierFrame:Clone()
-
-		-- Display
-		TierTemp.TierDisplay.Level_Template.Contents.TextLabel.Text = "Tier #"..tier
-		TierTemp.Name = "Tier"..tier
-
-		setupFrame(TierTemp.FreeFrame, free)
-		setupFrame(TierTemp.PremiumFrame, premium)
-		
-		TierTemp.FreeFrame.Reward.Activated:Connect(function()
-			ClaimBattlepassReward:FireServer(tier, false)
-			task.wait(0.5)
-			updateStatus(tier)
-		end)
-		
-		TierTemp.PremiumFrame.Reward.Activated:Connect(function()
-			ClaimBattlepassReward:FireServer(tier, true)
-			task.wait(0.5)
-			updateStatus(tier)
-		end)
-
-		TierTemp.Parent = rewardHolder
-		updateStatus(tier)
-	end
-	
-	
-	for tier = #BpConfig.Tiers[BpConfig.GetSeason()] + 1, lastInfTier do
-		setupInfTemp(tier)
-	end
-end
-
-init()	
-
-
--- QUESTS
-
-local toggleButton = bpFrame.Core.Main_Reward.Quests
-local showingQuests = false
 
 local function toggleQuest()
 	showingQuests = not showingQuests
 
-	RewardFrame.Visible = not showingQuests
+	-- Oculta ou exibe os frames para deixar a tela limpa
+	RewardHolder.Visible = not showingQuests
 	QuestFrame.Visible = showingQuests
-	
+
+	local passesFrame = ContentHolder:FindFirstChild("Passes")
+	if passesFrame then
+		passesFrame.Visible = not showingQuests
+	end
+
+	local dividerFrame = ContentHolder:FindFirstChild("Divider")
+	if dividerFrame then
+		dividerFrame.Visible = not showingQuests
+	end
+
 	if showingQuests then
-		PremiumFrame.Visible = false
+		PremiumOverlay.Visible = false
 	else
 		premiumVis()
 	end
 
-	toggleButton.Contents.Contents.Txt.Text = showingQuests and "REWARDS" or "QUESTS"
+	local txtLabel = TopFrame.Button:FindFirstChild("ActualText")
+	if txtLabel then
+		txtLabel.Text = showingQuests and "REWARDS" or "QUESTS"
+	end
 end
-
-toggleButton.Activated:Connect(toggleQuest)
 
 local function refreshQuests()
 	local quests = bpData.Quests
@@ -412,14 +254,13 @@ local function refreshQuests()
 		local name = quest.QuestName.Value or "Unknown Quest"
 		local desc = quest.Description.Value or "Unknown Desc"
 
-		local temp = script.QuestTemplate:Clone()
+		local temp = QuestTemplate:Clone()
 		temp.Name = questID
 
-		local info = temp.Contents.QuestInfo
-		info.Title.Text = name
-		info.Desc.Text = desc
-		
-		
+		local textFrame = temp.Contents.TextFrame
+		textFrame.Title.Text = name
+		textFrame.Subtext.Text = desc
+
 		local rewards = quest.Reward
 		local rewardTexts = {}
 
@@ -430,22 +271,21 @@ local function refreshQuests()
 			end
 		end
 
-		temp.Contents.Rewards.Text = table.concat(rewardTexts, ", ")
-
+		temp.Contents.Reward_Amount.Text = table.concat(rewardTexts, ", ")
 
 		local claim = temp.Contents.Claim
+
 		if quest.Claimed.Value then
-			claim.Contents.TextLabel.Text = "Claimed"
+			claim.ImageTransparency = 0.5
 		end
-		
+
 		claim.Activated:Connect(function()
 			local progress = quest.Progress.Value
 			local goal = quest.Goal.Value
-			if progress >= goal then
+			if progress >= goal and not quest.Claimed.Value then
 				local response = ClaimQuestReward:InvokeServer(quest)
-				print("QUEST RESPONSE CLIENT:", response)
 				if response then
-					claim.Contents.TextLabel.Text = "Claimed"
+					claim.ImageTransparency = 0.5
 				end
 			end
 		end)
@@ -453,61 +293,162 @@ local function refreshQuests()
 		local function updateProgress()
 			local progress = quest.Progress.Value
 			local goal = quest.Goal.Value
-			temp.Contents.Progress.Text = "Progress " .. progress .. "/" .. goal
+			textFrame.Progress.Text = "Progress " .. progress .. "/" .. goal
 
 			if progress >= goal and quest.Claimed.Value == false then
-				claim.Contents.TextLabel.Text = "Claim"
+				claim.ImageTransparency = 0
 			end
 		end
 
 		updateProgress()
-		scaleBar(quest.Progress.Value, quest.Goal.Value, claim.Contents.ProgressBar.Front)
+		scaleBar(quest.Progress.Value, quest.Goal.Value, temp.Contents.Fill_Bg)
 
 		quest.Progress.Changed:Connect(function()
 			updateProgress()
-			scaleBar(quest.Progress.Value, quest.Goal.Value, claim.Contents.ProgressBar.Front)
+			scaleBar(quest.Progress.Value, quest.Goal.Value, temp.Contents.Fill_Bg)
 		end)
 
 		temp.Parent = holder
 	end
-
 end
-
-refreshQuests()
-bpData.LastRefresh.Changed:Connect(refreshQuests)
 
 local function updateExpireTimer()
 	local now = os.date("!*t")
-	local nextMidnight = {
-		year = now.year,
-		month = now.month,
-		day = now.day + 1,
-		hour = 0,
-		min = 0,
-		sec = 0
-	}
-
+	local nextMidnight = {year = now.year, month = now.month, day = now.day + 1, hour = 0, min = 0, sec = 0}
 	local expireTime = os.time(nextMidnight)
 	local timeLeft = expireTime - os.time(os.date("!*t"))
 	QuestFrame.ExpireTimer.Text = "Expires in: " .. formatTime(timeLeft)
 end
 
+-- INIT
+local function init()
+	for _, reward in ipairs(RewardHolder:GetChildren()) do
+		if reward:IsA("Frame") and reward.Name:find("Tier") then
+			reward:Destroy()
+		end
+	end
 
-while true do
-	task.wait(1)
-	updateExpireTimer()
-	
-	local countdown = BpConfig.SeasonDuration()
-	bpFrame.Core.Countdown.Text = countdown
-	
-	task.spawn(function()
+	for tier, rewardData in Tiers do
+		local free = rewardData.Free
+		local premium = rewardData.Premium
+
+		local TierTemp = TierTemplate:Clone()
+		TierTemp.Name = "Tier"..tier
+
+		setupFrame(TierTemp.Free, free, tier)
+		setupFrame(TierTemp.Premium, premium, tier)
+
+		TierTemp.Free.Btn.Activated:Connect(function()
+			ClaimBattlepassReward:FireServer(tier, false)
+			task.wait(0.5)
+			updateStatus(tier)
+		end)
+
+		TierTemp.Premium.Btn.Activated:Connect(function()
+			ClaimBattlepassReward:FireServer(tier, true)
+			task.wait(0.5)
+			updateStatus(tier)
+		end)
+
+		TierTemp.Parent = RewardHolder
+		updateStatus(tier)
+	end
+
+	for tier = #BpConfig.Tiers[BpConfig.GetSeason()] + 1, lastInfTier do
+		setupInfTemp(tier)
+	end
+end
+
+-- Connections & Initial Calls
+TopFrame.Button.Btn.Activated:Connect(toggleQuest)
+
+premiumVis()
+bpData.Premium.Changed:Connect(premiumVis)
+
+updateExpBar()
+bpData.Exp.Changed:Connect(updateExpBar)
+bpData.Tier.Changed:Connect(function()
+	local tier = bpData.Tier.Value
+	lastInfTier = bpData.Tier.Value
+
+	updateExpBar()
+	if tier > #BpConfig.Tiers[BpConfig.GetSeason()] then
+		for t = #BpConfig.Tiers[BpConfig.GetSeason()] + 1, lastInfTier do
+			setupInfTemp(t)
+		end
+	end
+
+	task.wait(0.3)
+	updateStatus(tier)
+end)
+
+-- Purchases Setup (Skip Tiers)
+for _, skipFrame in ipairs(PurchasesContents:GetChildren()) do
+	if skipFrame:IsA("Frame") and skipFrame.Name:find("Skip") then
+		local skipAmount = tonumber(skipFrame.Name:match("%d+"))
+		if skipAmount and skipProducts[skipAmount] then
+			skipFrame.Button.Btn.Activated:Connect(function()
+				MPS:PromptProductPurchase(player, skipProducts[skipAmount].Normal)
+			end)
+			local btnGift = skipFrame:FindFirstChild("ButtomGift")
+			if btnGift then
+				btnGift.Activated:Connect(function()
+					MPS:PromptProductPurchase(player, skipProducts[skipAmount].Gift)
+				end)
+			end
+		end
+	end
+end
+
+-- Premium Overlay & Purchases Premium Button Logic
+task.spawn(function()
+	local info = GetMarketInfoByName:InvokeServer("Premium Battlepass")
+	if info then
+		-- Botões do Overlay
+		PremiumOverlay.Contents.Buy.Activated:Connect(function()
+			BuyEvent:FireServer(info.Id)
+		end)
+		PremiumOverlay.Contents.Gift.Activated:Connect(function()
+			SelectedGiftId.Value = info.GiftId
+			GiftFrame.Visible = true
+		end)
+
+		-- Botões da aba Purchases
+		local purchPrem = PurchasesContents:FindFirstChild("PremiumBattlepass")
+		if purchPrem then
+			local buyBtn = purchPrem:FindFirstChild("Button") and purchPrem.Button:FindFirstChild("Btn")
+			if buyBtn then
+				buyBtn.Activated:Connect(function()
+					BuyEvent:FireServer(info.Id)
+				end)
+			end
+
+			local giftBtn = purchPrem:FindFirstChild("ButtomGift")
+			if giftBtn then
+				giftBtn.Activated:Connect(function()
+					SelectedGiftId.Value = info.GiftId
+					GiftFrame.Visible = true
+				end)
+			end
+		end
+	end
+end)
+
+QuestFrame.Visible = false
+
+refreshQuests()
+bpData.LastRefresh.Changed:Connect(refreshQuests)
+
+init()	
+
+task.spawn(function()
+	while true do
+		task.wait(1)
+		updateExpireTimer()
+
 		if Season ~= BpConfig.GetSeason() then
-			--Update
 			Season = BpConfig.GetSeason()
 			init()	
 		end
-	end)
-end
-
-
-
+	end
+end)

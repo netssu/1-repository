@@ -1088,7 +1088,7 @@ local function updateBanner()
 		HRP.Anchored = true
 		if HRP and Humanoid then
 			pcall(function()
-				
+
 				HRP.CFrame = SummonNPC[Rarity]:WaitForChild("PositionPart").CFrame
 				Model.Parent = SummonNPC[Rarity].Unit
 				local animator = Humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", Humanoid)
@@ -1174,7 +1174,7 @@ end
 
 local blackList = {
 	'Asaka Tano',
-    'Asaka Tano (Outcast)',
+	'Asaka Tano (Outcast)',
 	'Egg Bane',
 	'Cad Bunny',
 	--TEMP
@@ -1191,17 +1191,17 @@ for _, unit in Upgrades do
 		local template = script.TemplateButton:Clone()
 		template.Name = unit.Name
 		template.Parent = ChancesFrame.ScrollingFrame[unit.Rarity].UnitHolder
-		
-		
 
-        --print(unit.Name)
+
+
+		--print(unit.Name)
 		local vp = ViewPortModule.CreateViewPort(unit.Name)
-		
+
 		if not vp then
 			--warn("Failed to create viewport for:", unit.Name)
 			continue
 		end
-		
+
 		vp.ZIndex = 6
 		vp.Parent = template
 
@@ -1248,7 +1248,7 @@ local function summon(amount, HolocronSummon, isLucky)
 
 	if not player.TutorialWin.Value and not player.TutorialLossGemsClaimed.Value then
 		if amount ~= 10 then return end -- can only summon 10 if not tut
-		
+
 		warn('Tut is not completed')
 		player.Character:PivotTo(workspace:WaitForChild('TutorialTeleportOut').CFrame)
 	end
@@ -1282,12 +1282,12 @@ local function summon(amount, HolocronSummon, isLucky)
 			TweenService:Create(SkipFrame.UIScale, TweenInfo.new(0.5, Enum.EasingStyle.Exponential), {Scale = 1}):Play()
 		end
 	end
-	
+
 	NewUIBlur.Enabled = false
 	local conn = NewUIBlur.Changed:Connect(function()
 		NewUIBlur.Enabled = false
 	end)
-	
+
 
 	local templates = {}
 	local traitDataCache = {}
@@ -1384,7 +1384,7 @@ local function summon(amount, HolocronSummon, isLucky)
 					end
 
 					local nextUnit = false
-					ViewModule.Hatch({statsTower, tower, function() nextUnit = true end, true, AutoSummon})
+					ViewModule.Hatch({statsTower, tower, function() nextUnit = true end, false, AutoSummon})
 					repeat task.wait() until nextUnit
 				end
 			elseif Data.Item then
@@ -1406,7 +1406,7 @@ local function summon(amount, HolocronSummon, isLucky)
 	--if Skip then
 	--	task.wait(2)
 	--end
-	
+
 	task.defer(function() -- 0.2, delay
 		task.wait(0.2)
 		for _, template in templates do
@@ -1419,9 +1419,9 @@ local function summon(amount, HolocronSummon, isLucky)
 
 	task.defer(function() -- 0.6
 		task.wait(0.6)
-				
+
 		--warn('kaboom')
-		
+
 		if Skip then
 			task.wait(1.5)
 			TweenService:Create(SkipFrame.UIScale, TweenInfo.new(0.25, Enum.EasingStyle.Exponential), {Scale = 0}):Play()
@@ -1458,11 +1458,11 @@ local function summon(amount, HolocronSummon, isLucky)
 			summon(1, HolocronSummon)
 		end
 	end)
-	
+
 	if not ReplicatedStorage:FindFirstChild('SummonDone') then
 		Instance.new('BoolValue', ReplicatedStorage).Name = 'SummonDone'
 	end
-	
+
 	conn:Disconnect()
 	conn = nil
 	NewUIBlur.Enabled = true
@@ -1666,13 +1666,13 @@ local function findProductID(id)
 			result = v.ProductID
 			break
 		end
-    end
-    
-    if not result then
-        if PassesList.Information[id] then
-            result = PassesList.Information[id].Id
-        end
-    end
+	end
+
+	if not result then
+		if PassesList.Information[id] then
+			result = PassesList.Information[id].Id
+		end
+	end
 
 	return result
 end
@@ -1808,11 +1808,11 @@ local zone = Zone.new(workspace.SummonTeleporters.SummonArea)
 --warn('ACCTIVATEAHFUSAHDUIFAS')
 
 zone.playerEntered:Connect(function(plr)
-    if plr.Character:FindFirstChild('Humanoid') and plr == player then	
-        if not game.Workspace.CurrentCamera:FindFirstChild("DepthOfField") then
-            local depthOfField = Instance.new("DepthOfFieldEffect",game.Workspace.CurrentCamera)
+	if plr.Character:FindFirstChild('Humanoid') and plr == player then	
+		if not game.Workspace.CurrentCamera:FindFirstChild("DepthOfField") then
+			local depthOfField = Instance.new("DepthOfFieldEffect",game.Workspace.CurrentCamera)
 		end
-		
+
 		debugSummonOpen(
 			"zone:entered",
 			"player=" .. tostring(plr.Name),
@@ -1820,18 +1820,18 @@ zone.playerEntered:Connect(function(plr)
 			"legacyVisible=" .. tostring(SummonFrame.Visible)
 		)
 		openPreferredSummonMenu()
-        UiHandler.DisableAllButtons()
-    end
+		UiHandler.DisableAllButtons()
+	end
 end)
 zone.playerExited:Connect(function(plr)
 	if not plr then return end
 	local character = plr.Character or plr.CharacterAdded:Wait()
 	if not character then return end
-	
+
 	if character:FindFirstChild('Humanoid') and plr == player then	
-        if game.Workspace.CurrentCamera:FindFirstChild("DepthOfField") then
-            game.Workspace.CurrentCamera:FindFirstChild("DepthOfField"):Destroy()
-        end
+		if game.Workspace.CurrentCamera:FindFirstChild("DepthOfField") then
+			game.Workspace.CurrentCamera:FindFirstChild("DepthOfField"):Destroy()
+		end
 		debugSummonOpen(
 			"zone:exited",
 			"player=" .. tostring(plr.Name),
@@ -1839,9 +1839,9 @@ zone.playerExited:Connect(function(plr)
 			"legacyVisible=" .. tostring(SummonFrame.Visible)
 		)
 		closePreferredSummonMenu()
-        --ChancesFrame.Visible = false
-        UiHandler.EnableAllButtons()
-    end
+		--ChancesFrame.Visible = false
+		UiHandler.EnableAllButtons()
+	end
 end)
 
 
@@ -1875,7 +1875,7 @@ local function ChangeChances(multiplayer,rareChance)
 end
 
 while true do
-    task.wait(1)
+	task.wait(1)
 	wireNewSummonButtons()
 	wireNewSummonSelection()
 	populateNewSummonGemShop()
@@ -1911,65 +1911,65 @@ while true do
 			end
 		end
 	end
-    local Buffs = script.Parent.Buffs
-    local LuckText = SummonFrame.Banner.LuckText
-    local Colors = script.LuckTextColors
+	local Buffs = script.Parent.Buffs
+	local LuckText = SummonFrame.Banner.LuckText
+	local Colors = script.LuckTextColors
 
-    local activeBuffs = {
-        {
-            name = "LuckyCrystal",
-            multiplier = 1.5,
-            chance = 25.1,
-            text = "x1.5 Luck",
-            gradient = Colors.LuckyCrystalG.Color,
-            stroke = Colors.LuckyCrystalS.Color,
-        },
-        {
-            name = "FortunateCrystal",
-            multiplier = 2,
-            chance = 22.5,
-            text = "x2 Luck",
-            gradient = Colors.UltraLuckG.Color,
-            stroke = Colors.UltraLuckS.Color,
-        },
-    }
+	local activeBuffs = {
+		{
+			name = "LuckyCrystal",
+			multiplier = 1.5,
+			chance = 25.1,
+			text = "x1.5 Luck",
+			gradient = Colors.LuckyCrystalG.Color,
+			stroke = Colors.LuckyCrystalS.Color,
+		},
+		{
+			name = "FortunateCrystal",
+			multiplier = 2,
+			chance = 22.5,
+			text = "x2 Luck",
+			gradient = Colors.UltraLuckG.Color,
+			stroke = Colors.UltraLuckS.Color,
+		},
+	}
 
-    local totalMultiplier = 1
-    local selectedBuff = nil
+	local totalMultiplier = 1
+	local selectedBuff = nil
 
-    for _, buff in ipairs(activeBuffs) do
-        if Buffs[buff.name].Visible then
-            totalMultiplier *= buff.multiplier
-            if not selectedBuff or buff.multiplier > selectedBuff.multiplier then
-                selectedBuff = buff
-            end
-        end
-    end
+	for _, buff in ipairs(activeBuffs) do
+		if Buffs[buff.name].Visible then
+			totalMultiplier *= buff.multiplier
+			if not selectedBuff or buff.multiplier > selectedBuff.multiplier then
+				selectedBuff = buff
+			end
+		end
+	end
 
-    if selectedBuff then
-        -- Adjust chance however you want; here just using the chance from the most powerful buff
+	if selectedBuff then
+		-- Adjust chance however you want; here just using the chance from the most powerful buff
 		ChangeChances(totalMultiplier, selectedBuff.chance)
-		
+
 		if player.OwnGamePasses['x2 Luck'].Value then
 			totalMultiplier += 1
 		end
-		
-        LuckText.Text = "x" .. totalMultiplier .. " Luck"
-        LuckText.UIGradient.Color = selectedBuff.gradient
-        LuckText.UIStroke.Color = selectedBuff.stroke
+
+		LuckText.Text = "x" .. totalMultiplier .. " Luck"
+		LuckText.UIGradient.Color = selectedBuff.gradient
+		LuckText.UIStroke.Color = selectedBuff.stroke
 		updateNewSummonLuckLabel(LuckText.Text, selectedBuff.gradient, selectedBuff.stroke)
-    else
-        ChangeChances(nil)
-        
-        if player.OwnGamePasses['x2 Luck'].Value then
-            LuckText.Text = "x2 Luck"
-        else
-            LuckText.Text = "x1 Luck"
-        end
-        
-        LuckText.UIGradient.Color = CS{CSK(0, C3(.75, .75, .75)), CSK(1, C3(1, 1, 1))}
-        LuckText.UIStroke.Color = Color3.new(0.494118, 0.494118, 0.494118)
+	else
+		ChangeChances(nil)
+
+		if player.OwnGamePasses['x2 Luck'].Value then
+			LuckText.Text = "x2 Luck"
+		else
+			LuckText.Text = "x1 Luck"
+		end
+
+		LuckText.UIGradient.Color = CS{CSK(0, C3(.75, .75, .75)), CSK(1, C3(1, 1, 1))}
+		LuckText.UIStroke.Color = Color3.new(0.494118, 0.494118, 0.494118)
 		updateNewSummonLuckLabel(LuckText.Text, LuckText.UIGradient.Color, LuckText.UIStroke.Color)
-    end
+	end
 
 end

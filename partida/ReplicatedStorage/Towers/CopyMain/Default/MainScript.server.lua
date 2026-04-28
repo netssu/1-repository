@@ -257,7 +257,10 @@ local functions = {
 
 		game.ReplicatedStorage.Events.VFX_Remote:FireAllClients({UnitName.Name, upgradeStats.AttackName}, script.Parent.HumanoidRootPart, target)
 
-		TowerFunctions.DamageFunction(script.Parent, target)
+		local damageResult = TowerFunctions.DamageFunction(script.Parent, target)
+		if damageResult == false then
+			warn("[TowerDamageDebug]", "DamageFunction returned false", script.Parent:GetFullName(), target:GetFullName())
+		end
 
 		local attackDuration = 0
 		for i, v in upgradeStats.MultiDamageDelays do
@@ -284,7 +287,10 @@ local functions = {
 
 		game.ReplicatedStorage.Events.VFX_Remote:FireAllClients({UnitName.Name,upgradeStats.AttackName},script.Parent.HumanoidRootPart,target)
 
-		TowerFunctions.DamageFunction(script.Parent,target)
+		local damageResult = TowerFunctions.DamageFunction(script.Parent,target)
+		if damageResult == false then
+			warn("[TowerDamageDebug]", "DamageFunction returned false", script.Parent:GetFullName(), target:GetFullName())
+		end
 
 		local attackDuration = 0
 		if upgradeStats.MultiDamageDelays then

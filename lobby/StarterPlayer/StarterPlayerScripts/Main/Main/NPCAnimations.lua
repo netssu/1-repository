@@ -13,7 +13,7 @@ local NPCs = {
 	workspace:WaitForChild('GoldFarmNPC'),
 	workspace:WaitForChild('CraftHitbox'):WaitForChild('NPCs'):WaitForChild('ShopNPC'),
 	workspace:WaitForChild('RaidShopArea'):WaitForChild('NPC'),
-	workspace:WaitForChild("EventMain"):WaitForChild("Fawn"),
+	workspace:WaitForChild("EventMain"):WaitForChild("special event"):WaitForChild("Fawn"),
 	workspace:WaitForChild('CompetitiveZone'):WaitForChild('NPC')
 }
 

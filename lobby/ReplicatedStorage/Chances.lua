@@ -155,12 +155,12 @@ module.UnitPercents ={
 }
 
 module.LuckyUnitPercents = {
-    {Rarity = "Secret", Weight = 0.2},
-    {Rarity = "Mythical", Weight = 8},
-    --{Rarity = "Star", Weight = 3.7},
-    {Rarity = "Legendary", Weight = 25},
-    {Rarity = "Epic", Weight = 66.8},
-    {Rarity = "Rare", Weight = 0}
+	{Rarity = "Secret", Weight = 0.2},
+	{Rarity = "Mythical", Weight = 8},
+	--{Rarity = "Star", Weight = 3.7},
+	{Rarity = "Legendary", Weight = 25},
+	{Rarity = "Epic", Weight = 66.8},
+	{Rarity = "Rare", Weight = 0}
 }
 
 
@@ -217,27 +217,27 @@ module.chooseRandomUnit = function(player, isLucky, bannerIndex)
 	local counter = 0
 	local luckMultiplier = if player.Buffs:FindFirstChild("UltraLuck") and player.Buffs:FindFirstChild("LuckyCrystal") then 2.25 elseif
 		player.Buffs:FindFirstChild("UltraLuck") then 2 elseif player.Buffs:FindFirstChild("LuckyCrystal") then 1.5 else 1
-	
+
 	local multiplier = (player.Prestige.Value * 0.05)/3
 	if multiplier > 0.20 then -- 1.5 = 50%
 		multiplier = 0.20
-    end
-    
-    if player.OwnGamePasses['x2 Luck'].Value then
-        luckMultiplier += 1
-    end
-	
+	end
+
+	if player.OwnGamePasses['x2 Luck'].Value then
+		luckMultiplier += 1
+	end
+
 	if game.PlaceId == 117137931466956 then
 		luckMultiplier += 5
 	end
 
 	luckMultiplier += multiplier
-    
-    local targetTable = module.UnitPercents
-    
-    if isLucky then
-        targetTable = module.LuckyUnitPercents
-    end
+
+	local targetTable = module.UnitPercents
+
+	if isLucky then
+		targetTable = module.LuckyUnitPercents
+	end
 
 	for _, info in targetTable do
 		local rarity = info.Rarity

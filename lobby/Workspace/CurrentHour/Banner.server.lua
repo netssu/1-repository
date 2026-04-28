@@ -27,7 +27,7 @@ local function main()
 				end
 			end
 		end
-		
+
 	end
 end
 

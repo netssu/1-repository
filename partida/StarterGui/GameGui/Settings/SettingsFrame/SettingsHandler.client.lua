@@ -58,15 +58,15 @@
 
 --musicvolume.bettercircle:GetPropertyChangedSignal("Position"):Connect(function()
 --	local percentage = getpercentage(musicvolume.bettercircle)
-	
+
 --	print('Percentage:')
 --	print(percentage)
-	
+
 --	Music.Volume = percentage
-	
+
 --	musicvolume.Parent.Parent.Parent.Contents.Percentage.Text = (math.round(percentage * 100)).."%"
 --	musicvolume.Bar.Size = UDim2.fromScale(musicvolume.bettercircle.Position.X.Scale + 0.03, 1)
-	
+
 --	updateSettingEvent:FireServer("MusicVolume", percentage)
 --end)
 
@@ -88,14 +88,14 @@
 --uivolume.bettercircle:GetPropertyChangedSignal("Position"):Connect(function()
 --	local percentage = getpercentage(uivolume.bettercircle)
 --	UI.Volume = percentage
-	
+
 --	uivolume.Parent.Parent.Parent.Contents.Percentage.Text = (math.round(percentage * 100)).."%"
 --	uivolume.Bar.Size = UDim2.fromScale(uivolume.bettercircle.Position.X.Scale + 0.03, 1)
 --end)
 --gamevolume.bettercircle:GetPropertyChangedSignal("Position"):Connect(function()
 --	local percentage = getpercentage(gamevolume.bettercircle)
 --	Game_sound.Volume = percentage
-	
+
 --	gamevolume.Parent.Parent.Parent.Contents.Percentage.Text = (math.round(percentage * 100)).."%"
 --	gamevolume.Bar.Size = UDim2.fromScale(gamevolume.bettercircle.Position.X.Scale + 0.03, 1)
 --end)
@@ -186,6 +186,18 @@ local Auto_3x_Speed= contents.Auto_3x_Speed
 
 local toggleoffposition = UDim2.fromScale(0.09, 0.5)
 local toggleonposition = UDim2.fromScale(0.6, 0.5)
+
+local function hasHigherSpeedAccess()
+	local ownGamePasses = Player:FindFirstChild("OwnGamePasses")
+	if not ownGamePasses then
+		return false
+	end
+
+	local speed3x = ownGamePasses:FindFirstChild("3x Speed")
+	local speed5x = ownGamePasses:FindFirstChild("5x Speed")
+
+	return (speed3x and speed3x.Value) or (speed5x and speed5x.Value) or false
+end
 
 function toggleon(gui)
 	gui.Contents.Toggle.Toggle.Circle.Position = toggleonposition
@@ -297,7 +309,7 @@ Skip_Summon_Animation.Contents.Toggle.Activated:Connect(function()
 	updateSettingEvent:FireServer("SummonSkip", result)--, currentPercent)
 end)
 Auto_3x_Speed.Contents.Toggle.Activated:Connect(function()
-	if Player.OwnGamePasses["3x Speed"].Value then
+	if hasHigherSpeedAccess() then
 		local result = toggle(Auto_3x_Speed)
 		updateSettingEvent:FireServer("Auto3x", result)--, currentPercent)
 	else
@@ -306,6 +318,8 @@ Auto_3x_Speed.Contents.Toggle.Activated:Connect(function()
 end)
 
 script.Parent.Frame.X_Close.Activated:Connect(function()
-	--script.Parent.Visible = false -- note from Ace: WHO DID THIS LOL
-	_G.CloseAll()
+	script.Parent.Visible = false
+	if typeof(_G.CloseAll) == "function" then
+		_G.CloseAll()
+	end
 end)

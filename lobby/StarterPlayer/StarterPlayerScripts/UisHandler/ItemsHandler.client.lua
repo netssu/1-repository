@@ -12,7 +12,7 @@ local itemStatsModule = require(ReplicatedStorage:WaitForChild("ItemStats"))
 local UIHandler = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Client"):WaitForChild("UIHandler"))
 local ViewPortModule = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("ViewPortModule"))
 
-local ItemsUI = PlayerGui:WaitForChild("NewUI"):WaitForChild("Items")
+local ItemsUI = PlayerGui:WaitForChild("NewUI"):WaitForChild("ItemsFrame")
 local MainFrame = ItemsUI:WaitForChild("Main")
 local ItemsTab = MainFrame:WaitForChild("ItemsTab")
 
@@ -37,7 +37,6 @@ local totalQuantity = 0
 
 -- FUNCTIONS
 
--- Função responsável por filtrar os itens baseados na barra de pesquisa
 local function filterItems(searchText)
 	local lowerSearch = string.lower(searchText)
 
@@ -69,8 +68,6 @@ local SelectionLibrary; SelectionLibrary = {
 		end
 
 		itemsSelectionFrame.ItemName.Text = item.Name
-
-		-- O itemSelectionFrame agora é estático. Removido o loop que mudava o AbsolutePosition.
 		itemsSelectionFrame.Visible = true
 	end,
 
@@ -169,7 +166,6 @@ local function NewItem(item)
 		end)
 	end
 
-	-- Garante que se o item for criado com a pesquisa ativa, ele respeita o filtro atual
 	if searchBox.Text ~= "" then
 		local lowerSearch = string.lower(searchBox.Text)
 		if not string.find(string.lower(item.Name), lowerSearch) then

@@ -1,7 +1,17 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Debris = game:GetService("Debris")
+local deathVfxFolder = workspace:FindFirstChild("VFX")
+if not deathVfxFolder then
+	deathVfxFolder = Instance.new("Folder")
+	deathVfxFolder.Name = "VFX"
+	deathVfxFolder.Parent = workspace
+end
+
 local VFX_Loader = require(ReplicatedStorage.VFX_Loader)
 local MiscModule = require(ReplicatedStorage.VFXModules.Misc)
 local upgradesModule = require(ReplicatedStorage.Upgrades)
+local VFX_Helper = require(ReplicatedStorage.Modules.VFX_Helper)
+local EmitModule = require(ReplicatedStorage.Modules:WaitForChild("EmitModule"))
 local TS = game:GetService("TweenService")
 local GameSpeed = workspace.Info.GameSpeed
 local player = game.Players.LocalPlayer
@@ -9,6 +19,159 @@ repeat task.wait() until player:FindFirstChild('DataLoaded')
 
 local playerSettings = player:WaitForChild("Settings")
 local TowerInfo = require(ReplicatedStorage.Modules.Helpers.TowerInfo)
+EmitModule.init()
+local DEATH_VFX_EMIT_DELAY = 0.1
+local DEATH_VFX_LIFETIME = 3
+local replicatedVfxFolder = ReplicatedStorage:FindFirstChild("VFX")
+local deathVfxTemplate = replicatedVfxFolder and replicatedVfxFolder:FindFirstChild("DeathVfx")
+local trackedMobFolders = setmetatable({}, {__mode = "k"})
+local trackedMobs = setmetatable({}, {__mode = "k"})
+local trackedMobCFrames = setmetatable({}, {__mode = "k"})
+
+if not deathVfxTemplate then
+	task.spawn(function()
+		replicatedVfxFolder = replicatedVfxFolder or ReplicatedStorage:WaitForChild("VFX", 10)
+		if replicatedVfxFolder then
+			deathVfxTemplate = replicatedVfxFolder:WaitForChild("DeathVfx", 10)
+		end
+		if not deathVfxTemplate then
+			warn("[VFX_Handler] ReplicatedStorage.VFX.DeathVfx not found; mob death VFX disabled.")
+		end
+	end)
+end
+
+local clientDeathVfxFolder = deathVfxFolder:FindFirstChild("ClientDeathVFX")
+if not clientDeathVfxFolder then
+	clientDeathVfxFolder = Instance.new("Folder")
+	clientDeathVfxFolder.Name = "ClientDeathVFX"
+	clientDeathVfxFolder.Parent = deathVfxFolder
+end
+
+local function getMobRootCFrame(mob: Model)
+	local root = mob:FindFirstChild("HumanoidRootPart") or mob.PrimaryPart or mob:FindFirstChildWhichIsA("BasePart")
+	if root then
+		trackedMobCFrames[mob] = root.CFrame
+		return root.CFrame
+	end
+
+	return trackedMobCFrames[mob]
+end
+
+local function getDeathVfxTemplate()
+	if deathVfxTemplate then
+		return deathVfxTemplate
+	end
+
+	replicatedVfxFolder = replicatedVfxFolder or ReplicatedStorage:FindFirstChild("VFX")
+	deathVfxTemplate = replicatedVfxFolder and replicatedVfxFolder:FindFirstChild("DeathVfx")
+	return deathVfxTemplate
+end
+
+local function spawnDeathVfx(mob: Model, deathCFrame: CFrame?)
+	if trackedMobs[mob] == "dead" then
+		return
+	end
+
+	local template = getDeathVfxTemplate()
+	if not template then
+		return
+	end
+
+	local rootCFrame = deathCFrame or getMobRootCFrame(mob)
+	if not rootCFrame then
+		return
+	end
+
+	trackedMobs[mob] = "dead"
+
+	local deathVfx = template:Clone()
+	deathVfx.Name = `{mob.Name}_DeathVfx`
+
+	if deathVfx:IsA("BasePart") then
+		deathVfx.Anchored = true
+		deathVfx.CanCollide = false
+		deathVfx.CanTouch = false
+		deathVfx.CanQuery = false
+		deathVfx.CFrame = rootCFrame
+	elseif deathVfx:IsA("Model") then
+		deathVfx:PivotTo(rootCFrame)
+	end
+
+	deathVfx.Parent = clientDeathVfxFolder
+	task.delay(DEATH_VFX_EMIT_DELAY, function()
+		if deathVfx.Parent then
+			VFX_Helper.EmitAllParticles(deathVfx)
+		end
+	end)
+	Debris:AddItem(deathVfx, DEATH_VFX_LIFETIME + DEATH_VFX_EMIT_DELAY)
+end
+
+local function bindMob(mob: Model)
+	if trackedMobs[mob] then
+		return
+	end
+
+	local humanoid = mob:FindFirstChildOfClass("Humanoid") or mob:WaitForChild("Humanoid", 5)
+	if not humanoid then
+		return
+	end
+
+	trackedMobs[mob] = true
+	getMobRootCFrame(mob)
+
+	local function spawnIfDead()
+		local rootCFrame = getMobRootCFrame(mob)
+		if humanoid.Health <= 0 then
+			spawnDeathVfx(mob, rootCFrame)
+		end
+	end
+
+	if humanoid.Health <= 0 then
+		spawnDeathVfx(mob, getMobRootCFrame(mob))
+		return
+	end
+
+	humanoid.HealthChanged:Connect(spawnIfDead)
+	humanoid.Died:Connect(function()
+		spawnDeathVfx(mob, getMobRootCFrame(mob))
+	end)
+	mob.Destroying:Connect(function()
+		spawnIfDead()
+	end)
+end
+
+local function bindMobFolder(folder: Instance)
+	if trackedMobFolders[folder] then
+		return
+	end
+
+	trackedMobFolders[folder] = true
+
+	for _, mob in folder:GetChildren() do
+		if mob:IsA("Model") then
+			task.spawn(bindMob, mob)
+		end
+	end
+
+	folder.ChildAdded:Connect(function(mob)
+		if mob:IsA("Model") then
+			task.spawn(bindMob, mob)
+		end
+	end)
+end
+
+for _, folderName in {"Mobs", "RedMobs", "BlueMobs"} do
+	local folder = workspace:FindFirstChild(folderName)
+	if folder then
+		bindMobFolder(folder)
+	end
+end
+
+workspace.ChildAdded:Connect(function(child)
+	if child:IsA("Folder") and (child.Name == "Mobs" or child.Name == "RedMobs" or child.Name == "BlueMobs") then
+		bindMobFolder(child)
+	end
+end)
 
 ReplicatedStorage.Events.VFX_Remote.OnClientEvent:Connect(function(Name,...)
 	if Name == "DamageIndicator"  then
@@ -64,7 +227,7 @@ local function handleFindTarget(newTower, mob: Model)
 			end
 		else
 			local mobTeam = mob:GetAttribute('Team')
-						
+
 			local newMobPositionForPoint = Vector3.new(HRP.Position.X,map[mobTeam .. 'Waypoints'][mob:WaitForChild("MovingTo").Value].Position.Y,HRP.Position.Z)
 			distanceToWaypoint = (newMobPositionForPoint - map[mobTeam .. 'Waypoints'][mob:WaitForChild("MovingTo").Value].Position).Magnitude
 
@@ -136,7 +299,7 @@ function FindTarget(newTower:Model)
 	else
 		map = workspace -- as it should be >:(
 	end
-	
+
 	mode = newTower.Config.TargetMode.Value
 	range = TowerInfo.GetRange(newTower)
 

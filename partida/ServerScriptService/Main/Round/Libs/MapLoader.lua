@@ -23,6 +23,21 @@ local info = workspace.Info
 
 local module = {}
 
+local function syncBaseMaxHealth(humanoid)
+	if not humanoid then
+		return
+	end
+
+	local function updateMaxHealth()
+		if humanoid.Health > humanoid.MaxHealth then
+			humanoid.MaxHealth = humanoid.Health
+		end
+	end
+
+	updateMaxHealth()
+	humanoid.HealthChanged:Connect(updateMaxHealth)
+end
+
 function module.LoadMap()
 	if info.Versus.Value or info.Competitive.Value then
 		return module.loadCompMap()
@@ -144,6 +159,9 @@ function module.loadCompMap()
 
 	ServerStorage.Maps:Destroy()
 	ServerStorage.CompetitiveMaps:Destroy()
+
+	syncBaseMaxHealth(workspace.RedBase.Humanoid)
+	syncBaseMaxHealth(workspace.BlueBase.Humanoid)
 	
 	workspace.RedBase.Humanoid:GetPropertyChangedSignal('Health'):Connect(function()
 		if workspace.RedBase.Humanoid.Health <= 0 then
@@ -219,6 +237,8 @@ function module.loadMainMap()
 	end
 
 	newMap.Parent = workspace.Map
+
+	syncBaseMaxHealth(newMap.Base.Humanoid)
 
 	newMap.Base.Humanoid:GetPropertyChangedSignal('Health'):Connect(function()
 		if newMap.Base.Humanoid.Health <= 0 then

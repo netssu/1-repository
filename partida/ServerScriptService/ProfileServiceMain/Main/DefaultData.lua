@@ -135,6 +135,7 @@ return {
 		["2x Player XP"] = false,
 		["2x Speed"] = false,
 		["3x Speed"] = false,
+		["5x Speed"] = false,
 		['2x Willpower Luck'] = false,
 
 		["Starter Bundle"] = false,
@@ -191,7 +192,7 @@ return {
 	SelectedVersion = "",
 	TimeSpent = 0,
 	RobuxSpent = 0,
-	Speed = 1, -- for 1.5x & 3x speed
+	Speed = 1, -- for 1.5x, 3x and 5x speed
 
 
 	-- Raids Data

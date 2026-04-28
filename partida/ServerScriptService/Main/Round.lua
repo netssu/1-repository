@@ -53,7 +53,7 @@ local died = false
 local healthMultiplier = 1
 local skipvotes = 0
 local BASIC_MOB_SPAWN_DELAY = 1
-local MIN_MOB_SPAWN_DELAY = 1
+local MIN_MOB_SPAWN_DELAY = 0.1
 
 
 Variables.mobLimit = game.Workspace.Info.MobLimit.Value
@@ -150,7 +150,12 @@ function round.StartGame(host)
 		local Settings = host:FindFirstChild("Settings")
 		if Settings then
 			local auto3x = Settings:FindFirstChild("Auto3x")
-			if auto3x and auto3x.Value == true then
+			local ownGamePasses = host:FindFirstChild("OwnGamePasses")
+			local has3xAccess = ownGamePasses and (
+				(ownGamePasses:FindFirstChild("3x Speed") and ownGamePasses["3x Speed"].Value)
+					or (ownGamePasses:FindFirstChild("5x Speed") and ownGamePasses["5x Speed"].Value)
+			)
+			if auto3x and auto3x.Value == true and has3xAccess then
 				print("speed")
 				local speedMultiplier= 3
 				workspace.Info.GameSpeed.Value = speedMultiplier
