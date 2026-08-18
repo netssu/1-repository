@@ -1,0 +1,66 @@
+{
+  "name": "RobloxGameTemplate-Race",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedFirst": {
+      "$className": "ReplicatedFirst",
+      "$ignoreUnknownInstances": true,
+      "$path": "src/ReplicatedFirst"
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "$ignoreUnknownInstances": true,
+      "StarterCharacterScripts": {
+        "$className": "StarterCharacterScripts",
+        "Race": {
+          "$path": "src/Places/Race/StarterPlayer/StarterCharacterScripts"
+        }
+      },
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "Audio": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/Audio"
+        },
+        "Interface": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/Interface"
+        },
+        "Race": {
+          "$path": "src/Places/Race/StarterPlayer/StarterPlayerScripts"
+        }
+      }
+    },
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "$ignoreUnknownInstances": true,
+      "Modules": {
+        "$path": "src/ReplicatedStorage/Modules"
+      },
+      "Race": {
+        "$path": "src/Places/Race/ReplicatedStorage"
+      }
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "$ignoreUnknownInstances": true,
+      "CharacterSetup": {
+        "$path": "src/ServerScriptService/CharacterSetup.server.lua"
+      },
+      "PlayerData": {
+        "$path": "src/ServerScriptService/PlayerData.server.lua"
+      },
+      "Race": {
+        "$path": "src/Places/Race/ServerScriptService"
+      }
+    },
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "$ignoreUnknownInstances": true,
+      "Packages": {
+        "$path": "src/ServerStorage/Packages"
+      },
+      "Race": {
+        "$path": "src/Places/Race/ServerStorage"
+      }
+    }
+  }
+}

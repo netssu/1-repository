@@ -2,6 +2,8 @@
 
 O template usa Rojo para definir a árvore do DataModel. O servidor mantém a autoridade sobre os dados persistentes e a configuração de personagens; o cliente inicializa interface, prompts e comportamentos locais.
 
+O repositório suporta dois places com os mesmos módulos compartilhados. `lobby.project.json` monta o lobby e `race.project.json` monta a corrida. Os dois projetos reutilizam `src/ReplicatedFirst`, `src/ReplicatedStorage`, `src/ServerScriptService`, `src/ServerStorage` e `src/StarterPlayer`; código exclusivo deve ficar em `src/Places/Lobby/` ou `src/Places/Race/`.
+
 ```mermaid
 flowchart LR
     RF["ReplicatedFirst\nPackages (ExpressivePrompts)"] --> CL["StarterPlayerScripts\nBootstrap local"]
