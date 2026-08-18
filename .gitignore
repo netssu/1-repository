@@ -1,0 +1,14 @@
+# Roblox Studio lock files
+/*.rbxlx.lock
+/*.rbxl.lock
+
+# Generated build artifacts
+/build/
+/artifacts/
+/sourcemap*.json
+
+# Local tool configuration
+/.mcp.json
+/skills-lock.json
+/config.luaurc
+/RULES.luau
