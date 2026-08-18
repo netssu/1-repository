@@ -11,20 +11,11 @@ Instale o Rokit e execute `rokit install` na raiz quando as ferramentas não est
 
 ## Rotina local
 
-1. Abra o place do lobby ou da corrida no Studio.
-2. Execute `rojo serve lobby.project.json` para o lobby ou `rojo serve race.project.json` para a corrida.
+1. Abra `place/GameTemplate.rbxlx` no Studio.
+2. Execute `rojo serve default.project.json`.
 3. Conecte o plugin Rojo e teste no Studio.
 
-Para criar builds dos dois places:
-
-```powershell
-rojo build lobby.project.json --output build/Lobby.rbxlx
-rojo build race.project.json --output build/Race.rbxlx
-```
-
-O código comum permanece nas pastas de serviço diretamente dentro de `src/`. Scripts exclusivos devem ser colocados no serviço equivalente dentro de `src/Places/Lobby/` ou `src/Places/Race/`. No DataModel, eles ficam agrupados na pasta `Lobby` ou `Race` do respectivo serviço.
-
-Use `rojo sourcemap lobby.project.json --output artifacts/lobby.sourcemap.json` ou `rojo sourcemap race.project.json --output artifacts/race.sourcemap.json` para inspecionar a árvore e valide uma build limpa com os comandos específicos de cada place acima.
+Use `rojo sourcemap default.project.json --output artifacts/sourcemap.json` para inspecionar a árvore e `rojo build default.project.json --output build/GameTemplate.rbxlx` para validar uma build limpa.
 
 ## Organização do código
 
