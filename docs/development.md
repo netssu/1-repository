@@ -11,11 +11,11 @@ Instale o Rokit e execute `rokit install` na raiz quando as ferramentas não est
 
 ## Rotina local
 
-1. Abra `place/GameTemplate.rbxlx` no Studio.
-2. Execute `rojo serve default.project.json`.
+1. Abra o place correspondente no Studio.
+2. Execute `rojo serve lobby.project.json` para o Lobby ou `rojo serve partida.project.json` para a Partida.
 3. Conecte o plugin Rojo e teste no Studio.
 
-Use `rojo sourcemap default.project.json --output artifacts/sourcemap.json` para inspecionar a árvore e `rojo build default.project.json --output build/GameTemplate.rbxlx` para validar uma build limpa.
+Use `rojo sourcemap lobby.project.json --output artifacts/lobby.sourcemap.json` ou `rojo sourcemap partida.project.json --output artifacts/partida.sourcemap.json` para inspecionar as árvores. Para validar builds limpas, use `rojo build lobby.project.json --output build/Lobby.rbxlx` e `rojo build partida.project.json --output build/Partida.rbxlx`.
 
 ## Organização do código
 

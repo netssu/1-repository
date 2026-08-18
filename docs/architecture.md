@@ -14,14 +14,13 @@ flowchart LR
 
 | Diretório | Destino Roblox | Conteúdo |
 | --- | --- | --- |
-| `src/ReplicatedFirst/` | `ReplicatedFirst` | dependências necessárias antes do restante do cliente |
-| `src/ReplicatedStorage/` | `ReplicatedStorage` | módulos compartilhados e remotes criados em execução |
-| `src/StarterPlayer/StarterPlayerScripts/` | `StarterPlayer.StarterPlayerScripts` | LocalScripts globais do jogador |
-| `src/StarterPlayer/StarterCharacterScripts/` | `StarterPlayer.StarterCharacterScripts` | LocalScripts para cada personagem |
-| `src/ServerScriptService/` | `ServerScriptService` | serviços e regras autoritativas |
-| `src/ServerStorage/` | `ServerStorage` | módulos e dependências privadas do servidor |
+| `places/src - Lobby/ReplicatedFirst/` e `places/src - Partida/ReplicatedFirst/` | `ReplicatedFirst` | dependências necessárias antes do restante do cliente |
+| `places/src - Lobby/ReplicatedStorage/` e `places/src - Partida/ReplicatedStorage/` | `ReplicatedStorage` | módulos compartilhados e remotes criados em execução |
+| `places/src - Lobby/StarterPlayer/` e `places/src - Partida/StarterPlayer/` | `StarterPlayer` | scripts globais e scripts de personagem |
+| `places/src - Lobby/ServerScriptService/` e `places/src - Partida/ServerScriptService/` | `ServerScriptService` | serviços e regras autoritativas |
+| `places/src - Lobby/ServerStorage/` e `places/src - Partida/ServerStorage/` | `ServerStorage` | módulos e dependências privadas do servidor |
 
-`default.project.json` preserva instâncias desconhecidas nos serviços principais. Isso permite usar Rojo sobre `place/GameTemplate.rbxlx` sem apagar assets que ainda existam apenas no place.
+`lobby.project.json` e `partida.project.json` preservam instâncias desconhecidas nos serviços principais. Isso permite usar Rojo sobre cada place sem apagar assets que ainda existam apenas no place.
 
 ## Fluxos de execução
 

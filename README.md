@@ -5,17 +5,23 @@ Base neutra para projetos Roblox, organizada com Rojo. Ela oferece persistência
 ## Início rápido
 
 1. Instale as ferramentas declaradas em `rokit.toml`.
-2. Abra `place/GameTemplate.rbxlx` no Roblox Studio.
-3. Execute `rojo serve default.project.json` e conecte o plugin Rojo ao servidor local.
+2. Abra o place correspondente no Roblox Studio.
+3. Execute um dos projetos Rojo e conecte o plugin ao servidor local:
+
+```powershell
+rojo serve lobby.project.json
+rojo serve partida.project.json
+```
 
 Para gerar um place a partir do código:
 
 ```powershell
 New-Item -ItemType Directory -Force build
-rojo build default.project.json --output build/GameTemplate.rbxlx
+rojo build lobby.project.json --output build/Lobby.rbxlx
+rojo build partida.project.json --output build/Partida.rbxlx
 ```
 
-O place é preservado pelo Rojo para manter objetos que ainda não foram exportados para `src/`.
+Cada projeto aponta para sua própria árvore em `places/` e preserva instâncias que ainda existam apenas no place.
 
 ## Documentação
 
