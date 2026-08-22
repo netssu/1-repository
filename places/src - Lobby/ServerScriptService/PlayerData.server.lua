@@ -1,39 +1,36 @@
 ------------------//SERVICES
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService: RunService = game:GetService("RunService")
 local ServerStorage: ServerStorage = game:GetService("ServerStorage")
 
 ------------------//CONSTANTS
-local STORE_NAME: string = RunService:IsStudio() and "PlayerData_Studio_v1" or "PlayerData_v1"
-local PROFILE_TEMPLATE = {
-	TimePlayed = 0,
-
-	Settings = {
-		MusicEnabled = true,
-		ShadowsEnabled = true,
-	},
-}
+local STORE_NAME: string = "FormulaE"
+local PROFILE_KEY_SUFFIX: string = "~PlayerProfile"
 
 ------------------//DEPENDENCIES
 local replicatedModules: Folder = ReplicatedStorage:WaitForChild("Modules")
 local packages: Folder = ServerStorage:WaitForChild("Packages")
+local serverModules: Folder = ServerStorage:WaitForChild("Modules")
 local profileStoreModule = require(packages:WaitForChild("ProfileStore"))
 local dataUtility = require(replicatedModules:WaitForChild("Data"):WaitForChild("DataUtility"))
+local profileData = require(serverModules:WaitForChild("ProfileData"))
 
 ------------------//VARIABLES
-local store = profileStoreModule.New(STORE_NAME, PROFILE_TEMPLATE)
+local store = profileStoreModule.New(STORE_NAME, profileData.create_template())
 local profilesByUserId: { [number]: any } = {}
 
 ------------------//FUNCTIONS
 local function attach_player_profile(player: Player): ()
-	local profile = store:StartSessionAsync(tostring(player.UserId))
+	local profileKey = tostring(player.UserId) .. PROFILE_KEY_SUFFIX
+	local profile = store:StartSessionAsync(profileKey)
 	if not profile then
 		warn("Falha ao iniciar sessão do perfil para " .. player.Name)
 		return
 	end
 
+	profileData.migrate(profile.Data)
 	profile:Reconcile()
+	profileData.migrate(profile.Data)
 	profile:AddUserId(player.UserId)
 	profilesByUserId[player.UserId] = profile
 	dataUtility.server.attach_profile(player, profile)
@@ -42,8 +39,8 @@ local function attach_player_profile(player: Player): ()
 		while player.Parent and profilesByUserId[player.UserId] do
 			task.wait(60)
 			if profilesByUserId[player.UserId] then
-				local currentTime = profile.Data.TimePlayed or 0
-				dataUtility.server.set(player, "TimePlayed", currentTime + 60)
+				local currentTime = profile.Data.Profile.Statistics.Playtime or 0
+				dataUtility.server.set(player, "Profile.Statistics.Playtime", currentTime + 60)
 			end
 		end
 	end)

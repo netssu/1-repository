@@ -2,6 +2,9 @@
 local Lighting: Lighting = game:GetService("Lighting")
 local TweenService: TweenService = game:GetService("TweenService")
 
+------------------//DEPENDENCIES
+local cameraFovController = require(script.Parent.Parent:WaitForChild("CameraFovController"))
+
 ------------------//CONSTANTS
 local BLUR_IGNORED_FRAMES = {
 	BlockInventoryFrame = true,
@@ -30,16 +33,6 @@ local function tween_blur(targetSize: number, duration: number): ()
 	TweenService:Create(get_blur_effect(), info, { Size = math.max(0, targetSize) }):Play()
 end
 
-local function tween_fov(target: number, duration: number): ()
-	local camera = workspace.CurrentCamera
-	if not camera then
-		return
-	end
-
-	local info = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	TweenService:Create(camera, info, { FieldOfView = target }):Play()
-end
-
 ------------------//MAIN FUNCTIONS
 function openAnimation.run(inst: GuiObject, state, utils, sfx): ()
 	if not inst:GetAttribute("UIOpen") then
@@ -55,7 +48,7 @@ function openAnimation.run(inst: GuiObject, state, utils, sfx): ()
 	local offset = inst:GetAttribute("open_offset_px") or 150
 	local popScale = inst:GetAttribute("open_pop_scale") or 0.7
 	local blurAmount = tonumber(inst:GetAttribute("blur"))
-	local fovAmount = inst:GetAttribute("fov")
+	local fovAmount = tonumber(inst:GetAttribute("fov"))
 
 	if delayTime > 0 then
 		task.wait(delayTime)
@@ -88,7 +81,7 @@ function openAnimation.run(inst: GuiObject, state, utils, sfx): ()
 		tween_blur(blurAmount, duration)
 	end
 	if fovAmount then
-		tween_fov(fovAmount, duration)
+		cameraFovController.set_ui_fov(fovAmount, duration)
 	end
 	if sfx then
 		sfx.play_for(inst, "sfx_open")

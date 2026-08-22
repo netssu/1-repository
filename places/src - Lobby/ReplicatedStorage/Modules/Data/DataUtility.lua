@@ -56,6 +56,25 @@ local function new_signal()
 	return signal
 end
 
+local function publish_server_change(player: Player, path: string, value: any): ()
+	local sigs = serverSignals[player.UserId]
+	if sigs then
+		local sig = sigs[path]
+		if not sig then
+			sig = new_signal()
+			sigs[path] = sig
+		end
+		sig:fire(value)
+	end
+
+	if changedRemote then
+		changedRemote:FireClient(player, {
+			path = path,
+			value = value,
+		})
+	end
+end
+
 local function ensure_remotes_server(): ()
 	remotesFolder = ReplicatedStorage:FindFirstChild(REMOTE_FOLDER_NAME) :: Folder?
 	if not remotesFolder then
@@ -167,25 +186,25 @@ function dataUtility.server.set(player: Player, path: string, value: any): ()
 	end
 
 	dictionary.set_by_path(profile.Data, path, value)
+	publish_server_change(player, path, value)
+	profile:Save()
+end
 
-	local sigs = serverSignals[player.UserId]
-	if sigs then
-		local sig = sigs[path]
-		if not sig then
-			sig = new_signal()
-			sigs[path] = sig
-		end
-		sig:fire(value)
+function dataUtility.server.update(player: Player, updateFunction: (data: any) -> ({ [string]: any }?)): boolean
+	local profile = serverProfiles[player.UserId]
+	if not profile then
+		return false
 	end
 
-	if changedRemote then
-		changedRemote:FireClient(player, {
-			path = path,
-			value = value,
-		})
+	local changes = updateFunction(profile.Data)
+	if changes then
+		for path, value in changes do
+			publish_server_change(player, path, value)
+		end
 	end
 
 	profile:Save()
+	return true
 end
 
 function dataUtility.server.bind(player: Player, path: string, fn: (any) -> ()): ({disconnect: (self: any) -> ()})?

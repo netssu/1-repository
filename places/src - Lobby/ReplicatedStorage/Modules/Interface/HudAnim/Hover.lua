@@ -13,7 +13,12 @@ function hover.on_hover(inst, state, utils, sfx, pulse)
 	local bgTo = inst:GetAttribute("hover_bg")
 	local imgTo = inst:GetAttribute("hover_img")
 
-	utils.tween(inst, { Size = utils.scale_udim2(state.origSize, 1 + hs), Rotation = state.origRot + hrot }, ht, Enum.EasingStyle.Back, Enum.EasingDirection.Out):Play()
+	if state.scaleTarget then
+		utils.tween(state.scaleTarget, { Scale = 1 + hs }, ht, Enum.EasingStyle.Back, Enum.EasingDirection.Out):Play()
+		utils.tween(inst, { Rotation = state.origRot + hrot }, ht, Enum.EasingStyle.Back, Enum.EasingDirection.Out):Play()
+	else
+		utils.tween(inst, { Size = utils.scale_udim2(state.origSize, 1 + hs), Rotation = state.origRot + hrot }, ht, Enum.EasingStyle.Back, Enum.EasingDirection.Out):Play()
+	end
 
 	if bgTo and inst.BackgroundColor3 then
 		utils.tween(inst, { BackgroundColor3 = bgTo }, ht):Play()
@@ -32,11 +37,16 @@ end
 function hover.on_rest(inst, state, utils, pulse)
 	pulse.stop(inst, state)
 	local ht = inst:GetAttribute("hover_t") or 0.12
-	utils.tween(inst, {
-		Size = state.origSize,
-		Position = state.origPos,
-		Rotation = state.origRot,
-	}, ht):Play()
+	if state.scaleTarget then
+		utils.tween(state.scaleTarget, { Scale = 1 }, ht):Play()
+		utils.tween(inst, { Rotation = state.origRot }, ht):Play()
+	else
+		utils.tween(inst, {
+			Size = state.origSize,
+			Position = state.origPos,
+			Rotation = state.origRot,
+		}, ht):Play()
+	end
 
 	if inst:GetAttribute("hover_bg") and state.origBg then
 		utils.tween(inst, { BackgroundColor3 = state.origBg }, ht):Play()

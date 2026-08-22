@@ -2,8 +2,8 @@
 local Lighting: Lighting = game:GetService("Lighting")
 local TweenService: TweenService = game:GetService("TweenService")
 
-------------------//CONSTANTS
-local DEFAULT_FOV = 70
+------------------//DEPENDENCIES
+local cameraFovController = require(script.Parent.Parent:WaitForChild("CameraFovController"))
 
 ------------------//VARIABLES
 local closeAnimation = {}
@@ -20,23 +20,13 @@ local function tween_blur(targetSize: number, duration: number): ()
 	TweenService:Create(blur, info, { Size = targetSize }):Play()
 end
 
-local function tween_fov(target: number, duration: number): ()
-	local camera = workspace.CurrentCamera
-	if not camera then
-		return
-	end
-
-	local info = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	TweenService:Create(camera, info, { FieldOfView = target }):Play()
-end
-
 local function finish_close(inst: GuiObject, state, hasBlur: boolean, duration: number): ()
 	inst.Visible = false
 	if hasBlur then
 		tween_blur(0, duration)
 	end
 	if inst:GetAttribute("fov") then
-		tween_fov(DEFAULT_FOV, duration)
+		cameraFovController.set_ui_fov(nil, duration)
 	end
 
 	if state then

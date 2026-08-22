@@ -11,14 +11,14 @@ local cache = {}
 local defaults = {
 	sfx_volume = 0.8,
 	sfx_speed = 1.0,
-	sfx_hover = "",
-	sfx_down = "",
-	sfx_up = "",
-	sfx_click = "",
-	sfx_select = "",
-	sfx_deselect = "",
-	sfx_open = "",
-	sfx_close = "",
+	sfx_hover = "rbxassetid://10066931761",
+	sfx_down = "rbxassetid://421058925",
+	sfx_up = "rbxassetid://10128766965",
+	sfx_click = "rbxassetid://10128760939",
+	sfx_select = "rbxassetid://10128760939",
+	sfx_deselect = "rbxassetid://421058925",
+	sfx_open = "rbxassetid://10066931761",
+	sfx_close = "rbxassetid://10128766965",
 }
 
 ------------------//FUNCTIONS
@@ -29,6 +29,10 @@ local function get_sound(id)
 	sound = Instance.new("Sound")
 	sound.SoundId = id
 	sound.Name = "HudSFX"
+	local soundGroup = SoundService:FindFirstChild("SFXGroup")
+	if soundGroup and soundGroup:IsA("SoundGroup") then
+		sound.SoundGroup = soundGroup
+	end
 	sound.Parent = SoundService
 	cache[id] = sound
 	return sound

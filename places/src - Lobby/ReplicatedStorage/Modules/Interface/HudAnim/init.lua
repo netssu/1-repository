@@ -45,6 +45,34 @@ local function apply_defaults(inst: GuiObject): ()
 	end
 end
 
+local function get_animation_target(inst: GuiObject): GuiObject
+	local targetMode = inst:GetAttribute("UIAnimTarget")
+	if targetMode == "Parent" or targetMode == "ParentScale" then
+		local parent = inst.Parent
+		if parent and parent:IsA("GuiObject") then
+			return parent
+		end
+	end
+	return inst
+end
+
+local function get_animation_scale_target(inst: GuiObject, animationTarget: GuiObject): UIScale?
+	if inst:GetAttribute("UIAnimTarget") ~= "ParentScale" then
+		return nil
+	end
+
+	local existingScale = animationTarget:FindFirstChild("HudAnimScale")
+	if existingScale and existingScale:IsA("UIScale") then
+		return existingScale
+	end
+
+	local scale = Instance.new("UIScale")
+	scale.Name = "HudAnimScale"
+	scale.Scale = 1
+	scale.Parent = animationTarget
+	return scale
+end
+
 local function wants_hover(g: GuiObject): boolean
 	if not g.Visible then
 		return false
@@ -143,11 +171,19 @@ end
 function hudAnim.apply_defaults_to_buttons(root: Instance, extra: {}?): ()
 	for _, d in root:GetDescendants() do
 		if d:IsA("GuiButton") then
-			d:SetAttribute("UIAnim", true)
-			apply_defaults(d)
-			if extra then
-				for k, v in extra do
-					d:SetAttribute(k, v)
+			if d:GetAttribute("UIAnim") == nil then
+				d:SetAttribute("UIAnim", true)
+			end
+			if d:GetAttribute("UIAnim") ~= false then
+				apply_defaults(d)
+				local animationTarget = get_animation_target(d)
+				if animationTarget ~= d then
+					apply_defaults(animationTarget)
+				end
+				if extra then
+					for k, v in extra do
+						d:SetAttribute(k, v)
+					end
 				end
 			end
 		end
@@ -162,18 +198,23 @@ function hudAnim.bind(inst: GuiObject): ()
 		return
 	end
 	bound[inst] = true
+	local animationTarget = get_animation_target(inst)
+	local animationScaleTarget = get_animation_scale_target(inst, animationTarget)
 
 	state[inst] = {
-		origSize = inst.Size,
-		origPos = inst.Position,
-		origRot = inst.Rotation,
-		origBg = (inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("Frame")) and inst.BackgroundColor3 or nil,
-		origImg = (inst:IsA("ImageLabel") or inst:IsA("ImageButton")) and inst.ImageColor3 or nil,
+		animationTarget = animationTarget,
+		scaleTarget = animationScaleTarget,
+		origSize = animationTarget.Size,
+		origPos = animationTarget.Position,
+		origRot = animationTarget.Rotation,
+		origBg = (animationTarget:IsA("TextLabel") or animationTarget:IsA("TextButton") or animationTarget:IsA("Frame")) and animationTarget.BackgroundColor3 or nil,
+		origImg = (animationTarget:IsA("ImageLabel") or animationTarget:IsA("ImageButton")) and animationTarget.ImageColor3 or nil,
 		hovering = false,
 	}
 
 	apply_defaults(inst)
-	rotate.on_bind(inst, state[inst], utils)
+	apply_defaults(animationTarget)
+	rotate.on_bind(animationTarget, state[inst], utils)
 
 	close.bind(inst, state[inst], utils, sfx)
 
@@ -188,7 +229,7 @@ function hudAnim.bind(inst: GuiObject): ()
 		end
 		if should_run_hover_for(inst) and wants_hover(inst) and not st.hovering then
 			st.hovering = true
-			hover.on_hover(inst, st, utils, sfx, pulse)
+			hover.on_hover(st.animationTarget, st, utils, sfx, pulse)
 		end
 	end)
 
@@ -199,7 +240,7 @@ function hudAnim.bind(inst: GuiObject): ()
 		end
 		if st.hovering and wants_hover(inst) then
 			st.hovering = false
-			hover.on_rest(inst, st, utils, pulse)
+			hover.on_rest(st.animationTarget, st, utils, pulse)
 		end
 	end)
 
@@ -212,22 +253,22 @@ function hudAnim.bind(inst: GuiObject): ()
 		if should_run_hover_for(inst) and wants_hover(inst) then
 			if not st.hovering then
 				st.hovering = true
-				hover.on_hover(inst, st, utils, sfx, pulse)
+				hover.on_hover(st.animationTarget, st, utils, sfx, pulse)
 			end
 		else
 			if st.hovering then
 				st.hovering = false
-				hover.on_rest(inst, st, utils, pulse)
+				hover.on_rest(st.animationTarget, st, utils, pulse)
 			end
 		end
 	end)
 
 	if inst:IsA("GuiButton") then
 		inst.MouseButton1Down:Connect(function()
-			click.on_down(inst, state[inst], utils, sfx)
+			click.on_down(state[inst].animationTarget, state[inst], utils, sfx)
 		end)
 		inst.MouseButton1Up:Connect(function()
-			click.on_up(inst, state[inst], utils, sfx)
+			click.on_up(state[inst].animationTarget, state[inst], utils, sfx)
 		end)
 	end
 
@@ -245,7 +286,7 @@ function hudAnim.bind(inst: GuiObject): ()
 
 		if not st.hovering then
 			st.hovering = true
-			hover.on_hover(inst, st, utils, sfx, pulse)
+			hover.on_hover(st.animationTarget, st, utils, sfx, pulse)
 		end
 	end)
 
@@ -263,7 +304,7 @@ function hudAnim.bind(inst: GuiObject): ()
 
 		if st.hovering then
 			st.hovering = false
-			hover.on_rest(inst, st, utils, pulse)
+			hover.on_rest(st.animationTarget, st, utils, pulse)
 		end
 	end)
 
@@ -324,7 +365,7 @@ function hudAnim.unbind(inst: GuiObject): ()
 		return
 	end
 
-	pulse.stop(inst, st)
+	pulse.stop(st.animationTarget, st)
 
 	if runningOpen[inst] then
 		task.cancel(runningOpen[inst])
